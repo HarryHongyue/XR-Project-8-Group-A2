@@ -1,0 +1,94 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9a8d65017e7c2d408570e6a83a8662a, type: 3}
+  m_Name: TutorKnowledgeBase
+  m_EditorClassIdentifier: Assembly-CSharp::Project8.AI.TutorKnowledgeBase
+  entries:
+  - keywords:
+    - strain
+    - delta l
+    - relative change
+    answer: Strain h = deltaL / L is the relative change in separation between two free test masses. If they are 1 m apart and the wave changes the distance by 0.01 m, the strain is 0.01. Real detector strain is around 1e-21.
+  - keywords:
+    - stretch
+    - squeeze
+    - polarization
+    - ellipse
+    - deform
+    answer: A passing gravitational wave alternately stretches space in one transverse direction and squeezes it in the perpendicular one - the '+' polarization. Watch the ring of test masses deform into an ellipse that flips orientation.
+  - keywords:
+    - wavefront
+    - marker
+    - reached
+    - ahead
+    - behind
+    answer: The yellow ring marks where the disturbance has reached right now (s = v*t along the propagation axis). The green and red markers ride just ahead of and behind it so you can predict which mass moves next.
+  - keywords:
+    - speed
+    - slow
+    - light
+    - fast
+    - velocity
+    answer: Real gravitational waves travel at the speed of light - you could never watch or surf one. This app only slows the VISUALIZATION speed; the model itself is unchanged. That is a viewing choice, not a physical claim.
+  - keywords:
+    - exaggerat
+    - scale
+    - real
+    - small
+    - actually
+    answer: Real GW strain on Earth is about 1e-21 - utterly invisible. Following LIGO's public visualization practice, the deformation shown here is enormously exaggerated so the pattern can be seen at all.
+  - keywords:
+    - ride
+    - surf
+    - perspective
+    - view
+    - frame
+    - camera
+    answer: Riding alongside the wave is a pedagogical viewpoint, not a real relativistic observer frame. It lets you inspect propagation; the physics parameters stay the same - only your viewpoint changes.
+  - keywords:
+    - frequency
+    - pitch
+    - cycles
+    answer: Frequency f sets how many stretch-and-squeeze cycles occur per second of simulation time. Raise it and the ring oscillates faster between ellipses.
+  - keywords:
+    - amplitude
+    - h0
+    - strength
+    - how big
+    answer: h0 is the strain amplitude - the maximum relative deformation. Bigger h0 means a deeper stretch and a harder squeeze as the wave passes.
+  - keywords:
+    - invariant
+    - same
+    - change
+    - compare
+    answer: When you switch viewpoints, the propagation direction, frequency and amplitude stay the same - they are model parameters. What changes is only your reference frame, a visualization choice.
+  - keywords:
+    - mass
+    - particle
+    - ring
+    - object
+    - sphere
+    - grid
+    answer: Each sphere is a freely floating test mass. A wave passing between them changes their separations - that relative change is all a detector can see.
+  - keywords:
+    - pause
+    - replay
+    - predict
+    - task
+    - reset
+    answer: Pause mid-flight and predict which mass will move next; the wavefront marker shows what the wave has reached. Replay starts the wave over.
+  - keywords:
+    - direction
+    - propagat
+    - travel
+    answer: The wave travels along a fixed axis through the field. Reconstruct it by watching the order in which test masses at different positions respond.
+  fallbackAnswer: Good question. In this visualization a simplified gravitational wave passes a field of test masses. Try asking about strain, stretch and squeeze, the wavefront markers, why the motion is slowed down, or which values are exaggerated.
