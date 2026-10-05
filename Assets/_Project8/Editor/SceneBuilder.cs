@@ -638,10 +638,13 @@ namespace Project8.EditorTools
             var panel = BuildControlPanel(ship.transform, eye, controller, model,
                 parameters, perspective, task, tutor, voice);
             cockpit.controlPanel = panel.gameObject;
+            // The LIGO model sits far beyond Earth on the wave line - the last stop
+            // of the mission is watching its laser arms deform.
+            var ligo = BuildInterferometer(mats, model, controller, new Vector3(72f, 0.8f, 22f));
+            ligo.localScale = Vector3.one * 1.6f;
             cockpit.story = BuildMissionPanel(ship.transform, eye, controller, model,
-                earth.transform, binary.transform, tutor, voice);
+                earth.transform, binary.transform, ligo, tutor, voice);
             cockpit.secondaryPanel = cockpit.story.narrationText.GetComponentInParent<Canvas>().gameObject;
-            BuildInterferometer(mats, model, controller, new Vector3(3.4f, 1.35f, 5f));
 
             task.ui = panel;
             cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eye);
@@ -725,7 +728,7 @@ namespace Project8.EditorTools
         }
 
         // ------------------------------------------------------------- interferometer
-        static void BuildInterferometer(Mats mats, GravitationalWaveModel model,
+        static Transform BuildInterferometer(Mats mats, GravitationalWaveModel model,
                                         SimulationController sim, Vector3 pos)
         {
             var root = new GameObject("Interferometer (LIGO-style)");
@@ -749,6 +752,7 @@ namespace Project8.EditorTools
             li.simulation = sim;
             li.armA = armA;
             li.armB = armB;
+            return root.transform;
         }
 
         static LineRenderer MakeLaserArm(Transform parent, string name, Vector3 end, Mats mats)
@@ -791,7 +795,7 @@ namespace Project8.EditorTools
         // ------------------------------------------------------------- mission panel (story)
         static StoryDirector BuildMissionPanel(Transform ship, Vector3 eye, SimulationController sim,
                                       GravitationalWaveModel model, Transform earth, Transform binary,
-                                      AITutor tutor, Project8.UI.RickVoice voice)
+                                      Transform ligo, AITutor tutor, Project8.UI.RickVoice voice)
         {
             var dirGO = new GameObject("StoryDirector");
             var director = dirGO.AddComponent<StoryDirector>();
@@ -800,9 +804,12 @@ namespace Project8.EditorTools
             director.ship = ship;
             director.earth = earth;
             director.binary = binary;
+            director.ligo = ligo;
             director.voice = voice;
             director.cockpit = ship.GetComponent<CockpitControls>();
-            director.flyTarget = new Vector3(-7f, 1.3f, 11f);
+            // Vantage point 90 degrees off the binary-Earth line: the wave axis is
+            // horizontal across the window for the whole mission.
+            director.flyTarget = new Vector3(-16f, 1.5f, 4f);
 
             var canvasGO = new GameObject("MissionPanel");
             var canvas = canvasGO.AddComponent<Canvas>();
@@ -964,7 +971,7 @@ namespace Project8.EditorTools
             MakeButton(rt, "Btn_ReplayWave", "Replay wave", new Vector2(130f, -230f), 210f,
                 lib.ReplayCurrent);
             MakeText(rt, "IfNote",
-                "the red L-frame by the ship is a LIGO-style interferometer - watch its laser arms",
+                "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it",
                 13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(1f, 0.55f, 0.55f),
                 new Vector2(0f, -290f), new Vector2(860f, 30f));
 
@@ -1615,8 +1622,8 @@ namespace Project8.EditorTools
                 case "Replay wave": return "回放波形";
                 case "click a slot: empty = save current wave, saved = load it": return "点击空槽保存波形，点击已存槽加载波形";
                 case "exaggeration: 0 = real scale (invisible)  ->  2 = max": return "形变夸张度：0 = 实际尺度（不可见），2 = 最大";
-                case "the red L-frame by the ship is a LIGO-style interferometer - watch its laser arms":
-                    return "右侧红色 L 形结构是干涉仪示意：观察激光臂长度变化";
+                case "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it":
+                    return "地球后方远处的红色 L 形结构是 LIGO 式干涉仪，任务最后一站在它旁边";
                 default:
                     if (english.StartsWith("Wave ") && english.EndsWith("  (empty)"))
                         return "波形 " + english.Substring(5, 1) + "（空）";
@@ -1660,8 +1667,8 @@ namespace Project8.EditorTools
                     return "klik op een slot: leeg = huidige golf opslaan, opgeslagen = laden";
                 case "exaggeration: 0 = real scale (invisible)  ->  2 = max":
                     return "overdrijving: 0 = echte schaal (onzichtbaar)  ->  2 = max";
-                case "the red L-frame by the ship is a LIGO-style interferometer - watch its laser arms":
-                    return "het rode L-frame bij het schip is een LIGO-achtige interferometer - let op de laserarmen";
+                case "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it":
+                    return "het rode L-frame ver achter de Aarde is een LIGO-achtige interferometer - de missie eindigt ernaast";
                 default:
                     if (english.StartsWith("Wave ") && english.EndsWith("  (empty)"))
                         return "Golf " + english.Substring(5, 1) + "  (leeg)";
