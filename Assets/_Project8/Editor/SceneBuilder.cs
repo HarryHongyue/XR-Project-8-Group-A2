@@ -47,18 +47,17 @@ namespace Project8.EditorTools
                 var mats = CreateMaterials();
                 var prefab = CreateTestMassPrefab(mats.TestMass);
                 var storyParams = CreateParameters("SimulationParameters", WaveMode.Chirp);
-                var labParams = CreateParameters("SimulationParameters_Lab", WaveMode.Burst);
                 var knowledge = CreateKnowledgeBase();
                 var hum = CreateHumClip();
-                BuildScene(mats, prefab, storyParams, knowledge, hum, true, "Main");
-                BuildScene(mats, prefab, labParams, knowledge, hum, false, "WaveLab");
+                BuildScene(mats, prefab, storyParams, knowledge, hum, "Main");
                 BuildWelcomeScene(mats, hum);
                 EditorBuildSettings.scenes = new[]
                 {
                     new EditorBuildSettingsScene($"{Root}/Scenes/Welcome.unity", true),
                     new EditorBuildSettingsScene($"{Root}/Scenes/Main.unity", true),
-                    new EditorBuildSettingsScene($"{Root}/Scenes/WaveLab.unity", true),
                 };
+                AssetDatabase.DeleteAsset($"{Root}/Scenes/WaveLab.unity");
+                AssetDatabase.DeleteAsset($"{Root}/Settings/SimulationParameters_Lab.asset");
                 ConfigureOpenXRLoader();
                 PlayerSettings.colorSpace = ColorSpace.Linear;
                 PlayerSettings.productName = "Project 08 - Surfing a Gravitational Wave";
@@ -75,7 +74,7 @@ namespace Project8.EditorTools
 
         static void ValidateGeneratedScenes()
         {
-            foreach (string sceneName in new[] { "Main", "WaveLab" })
+            foreach (string sceneName in new[] { "Main" })
             {
                 var scene = EditorSceneManager.OpenScene($"{Root}/Scenes/{sceneName}.unity");
                 var objects = scene.GetRootGameObjects()
@@ -204,7 +203,7 @@ namespace Project8.EditorTools
         // ------------------------------------------------------------------ assets
         struct Mats
         {
-            public Material TestMass, MarkerFront, MarkerAhead, MarkerBehind, Handle;
+            public Material TestMass, Handle;
             public Material Hull, HullDark, Console, Glass, EngineGlow;
             public Material NetLine, BlackHole, Accretion, AccretionGlow, Planet, StarGlow, Laser;
         }
@@ -220,10 +219,6 @@ namespace Project8.EditorTools
                 m.Handle.EnableKeyword("_EMISSION");
                 m.Handle.SetColor("_EmissionColor", new Color(0.02f, 0.25f, 0.28f));
             }
-            m.MarkerFront = MakeMaterial("M_MarkerFront", "Sprites/Default", new Color(1f, 0.85f, 0.1f, 0.9f));
-            m.MarkerAhead = MakeMaterial("M_MarkerAhead", "Sprites/Default", new Color(0.25f, 0.9f, 0.35f, 0.65f));
-            m.MarkerBehind = MakeMaterial("M_MarkerBehind", "Sprites/Default", new Color(0.95f, 0.25f, 0.25f, 0.65f));
-
             m.Hull = MakeMaterial("M_Hull", "Standard", new Color(0.55f, 0.57f, 0.63f), 0.55f);
             m.HullDark = MakeMaterial("M_HullDark", "Standard", new Color(0.10f, 0.11f, 0.14f), 0.35f);
             m.Console = MakeMaterial("M_Console", "Standard", new Color(0.16f, 0.17f, 0.21f), 0.5f);
@@ -313,15 +308,17 @@ namespace Project8.EditorTools
             }
             // Teaching-model defaults (see Documentation/PhysicsModel.md)
             p.strainAmplitude = 0.5f;
-            p.frequencyHz = 0.9f;
+            p.frequencyHz = 0.55f;
             p.phaseRadians = 0f;
-            p.propagationAxis = PropagationAxis.NegativeZ;
+            // +X: the binary sits left-front of the ship and Earth right-front,
+            // so the wave sweeps laterally across the seated view.
+            p.propagationAxis = PropagationAxis.PositiveX;
             p.waveMode = mode;
             p.packetDurationSeconds = 4f;
             p.inspiralDurationSeconds = 8f;
             p.ringdownSeconds = 4f;
             p.postMergerResidual = 0.25f;
-            p.visualizationSpeedMps = 2.2f;
+            p.visualizationSpeedMps = 3.2f;
             p.displacementExaggeration = 1.6f;
             EditorUtility.SetDirty(p);
             return p;
@@ -485,13 +482,15 @@ namespace Project8.EditorTools
         }
 
         static void BuildScene(Mats mats, TestMass massPrefab, SimulationParameters parameters,
-                               TutorKnowledgeBase knowledge, AudioClip hum, bool story, string sceneName)
+                               TutorKnowledgeBase knowledge, AudioClip hum, string sceneName)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             Vector3 seatPos = new Vector3(0f, 0f, -0.15f);
             Vector3 eye = seatPos + new Vector3(0f, 1.25f, 0f);
-            Vector3 binaryPos = new Vector3(0f, 1.8f, 23f);
-            Vector3 earthPos = new Vector3(0f, -4f, -24f);
+            // Side-on viewing geometry: the binary sits left-front, the wave travels
+            // +X laterally across the view, and Earth is ~45 degrees to the right.
+            Vector3 binaryPos = new Vector3(-13f, 1.8f, 20f);
+            Vector3 earthPos = new Vector3(22f, -4f, 20f);
 
             // --- space environment --------------------------------------------
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
@@ -531,21 +530,13 @@ namespace Project8.EditorTools
             var tutorGO = new GameObject("AITutor");
             var tutor = tutorGO.AddComponent<AITutor>();
             tutor.knowledgeBase = knowledge;
+            var voice = tutorGO.AddComponent<Project8.UI.RickVoice>();
 
-            // --- binary (story) or post-merger remnant (lab) ---------------------
-            Transform[] wellSources;
-            if (story)
-            {
-                var binary = BuildBinaryBlackHoles(mats, controller, binaryPos,
-                    parameters.inspiralDurationSeconds);
-                wellSources = new[] { binary.blackHoleA, binary.blackHoleB, binary.mergedHole };
-            }
-            else
-            {
-                wellSources = new[] { MakeBlackHole(mats, "RemnantHole", binaryPos, simGO.transform, 1.7f) };
-            }
+            // --- binary ---------------------------------------------------------
+            var binary = BuildBinaryBlackHoles(mats, controller, binaryPos,
+                parameters.inspiralDurationSeconds);
 
-            // --- Earth (both scenes: story wave hits it, lab replays on it) ------
+            // --- Earth -----------------------------------------------------------
             var earth = BuildEarth(mats, earthPos, 7f);
             var deformer = earth.GetComponent<EarthDeformer>();
             deformer.model = model;
@@ -556,24 +547,30 @@ namespace Project8.EditorTools
             var volume = volumeGO.AddComponent<SpacetimeVolume>();
             volume.model = model;
             volume.simulation = controller;
-            // Every mass dents the lattice: black holes deeply, Earth a little.
-            var wells = new System.Collections.Generic.List<SpacetimeVolume.GravityWell>();
-            foreach (var w in wellSources)
-                wells.Add(new SpacetimeVolume.GravityWell { source = w, depth = 4.6f, radius = 30f });
-            wells.Add(new SpacetimeVolume.GravityWell
-                { source = earth.transform, depth = 1.2f, radius = 14f });
+            // Every mass dents the lattice at all times: the black holes carve deep,
+            // wide wells (mass >> Earth); Earth presses a shallower, still visible dip.
+            // 'radius' divides squared distance - it behaves like sigma^2, so larger
+            // values spread the dent over more nodes and keep it smooth.
+            var wells = new System.Collections.Generic.List<SpacetimeVolume.GravityWell>
+            {
+                new SpacetimeVolume.GravityWell { source = binary.blackHoleA, depth = 5.5f, radius = 150f },
+                new SpacetimeVolume.GravityWell { source = binary.blackHoleB, depth = 5.5f, radius = 150f },
+                new SpacetimeVolume.GravityWell { source = binary.mergedHole, depth = 5.5f, radius = 150f },
+                new SpacetimeVolume.GravityWell { source = earth.transform, depth = 2.4f, radius = 120f },
+            };
             volume.wells = wells.ToArray();
             volume.lineMaterial = mats.NetLine;
             volume.pointMaterial = CreateStarMaterial();
-            volume.countX = 31;
-            volume.countY = 11;
-            volume.countZ = 33;
-            volume.spacing = 2.6f;
-            volume.centre = new Vector3(0f, 0.5f, 2f);
+            volume.countX = 45;
+            volume.countY = 13;
+            volume.countZ = 45;
+            volume.spacing = 1.8f;
+            volume.pointSize = 0.09f;
+            volume.centre = new Vector3(4f, 0.5f, 10f);
             volume.connectLayers = false;
 
             var fieldGO = new GameObject("PredictionTestMasses");
-            fieldGO.transform.position = new Vector3(0f, 1.8f, 12f);
+            fieldGO.transform.position = new Vector3(-4f, 1.8f, 14f);
             var field = fieldGO.AddComponent<TestMassField>();
             field.model = model;
             field.simulation = controller;
@@ -583,22 +580,6 @@ namespace Project8.EditorTools
             field.gridSpacing = 3f;
             field.depthCount = 5;
             field.depthSpacing = 3f;
-
-            // --- wavefront markers ---------------------------------------------
-            var markersGO = new GameObject("WavefrontMarkers");
-            markersGO.transform.SetParent(simGO.transform, false);
-            var markers = markersGO.AddComponent<WavefrontMarkers>();
-            markers.model = model;
-            markers.simulation = controller;
-            markers.maxVisibleDistance = 70f;
-            markers.markerOffset = 1.5f;
-            markers.wavefrontMarker = MakeRingMarker("Marker_Wavefront", mats.MarkerFront,
-                7.5f, "wavefront (where the disturbance has reached)", hum,
-                model, controller).transform;
-            markers.aheadMarker = MakeRingMarker("Marker_Ahead", mats.MarkerAhead,
-                7.5f, "ahead of the wavefront").transform;
-            markers.behindMarker = MakeRingMarker("Marker_Behind", mats.MarkerBehind,
-                7.5f, "behind the wavefront").transform;
 
             // --- spaceship + seated rig -----------------------------------------
             var ship = BuildSpaceship(mats, hum);
@@ -637,7 +618,7 @@ namespace Project8.EditorTools
             perspective.moveTarget = ship.transform;
             perspective.rideSideOffset = 4.5f;
             perspective.rideHeightOffset = 0.6f;
-            if (story) perspective.enabled = false; // StoryDirector owns ship motion here
+            perspective.enabled = false; // StoryDirector owns ship motion until the user rides
 
             // --- prediction task --------------------------------------------------
             var taskGO = new GameObject("PredictionTask");
@@ -646,27 +627,20 @@ namespace Project8.EditorTools
             task.model = model;
             task.simulation = controller;
 
-            // --- console UI --------------------------------------------------------
-            SimulationUI panel;
-            if (story)
-            {
-                panel = BuildControlPanel(controller, model, parameters, perspective, task,
-                    ship.transform, new Vector3(0.12f, 1.44f, 1.14f), eye);
-                cockpit.controlPanel = panel.gameObject;
-                cockpit.story = BuildMissionPanel(ship.transform, eye, controller, model, earth.transform, tutor);
-                cockpit.secondaryPanel = cockpit.story.narrationText.GetComponentInParent<Canvas>().gameObject;
-            }
-            else
-            {
-                // Wave Lab uses ONE merged panel: transport + sliders + wave library.
-                panel = BuildWaveLabPanel(ship.transform, eye, controller, model,
-                    parameters, perspective, task, tutor);
-                cockpit.controlPanel = panel.gameObject;
-                cockpit.secondaryPanel = panel.gameObject;
-                BuildInterferometer(mats, model, controller, new Vector3(3.4f, 1.35f, 5f));
-            }
+            // --- console UI: ONE merged control panel + mission panel on the rail --
+            // Everything (transport, sliders, wave slots, interferometer hint, Rick Q&A)
+            // lives in the single ControlPanel; the Mission panel sits beside it on the
+            // left rail. Both tabs stay available for the whole experience.
+            var panel = BuildControlPanel(ship.transform, eye, controller, model,
+                parameters, perspective, task, tutor, voice);
+            cockpit.controlPanel = panel.gameObject;
+            cockpit.story = BuildMissionPanel(ship.transform, eye, controller, model,
+                earth.transform, binary.transform, tutor, voice);
+            cockpit.secondaryPanel = cockpit.story.narrationText.GetComponentInParent<Canvas>().gameObject;
+            BuildInterferometer(mats, model, controller, new Vector3(3.4f, 1.35f, 5f));
+
             task.ui = panel;
-            cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eye, story);
+            cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eye);
             panel.gameObject.SetActive(false);
             cockpit.secondaryPanel.SetActive(false);
 
@@ -789,7 +763,7 @@ namespace Project8.EditorTools
             return lr;
         }
 
-        static GameObject BuildCompactPanel(Transform ship, CockpitControls cockpit, Vector3 eye, bool story)
+        static GameObject BuildCompactPanel(Transform ship, CockpitControls cockpit, Vector3 eye)
         {
             var go = new GameObject("MenuRail");
             var canvas = go.AddComponent<Canvas>();
@@ -803,26 +777,17 @@ namespace Project8.EditorTools
             rt.localPosition = new Vector3(-0.72f, 1.43f, 0.98f);
             rt.localScale = Vector3.one * 0.00115f;
             rt.rotation = Quaternion.LookRotation((rt.position - eye).normalized, Vector3.up);
-            if (story)
-            {
-                MakeButton(rt, "Btn_Secondary", "MISSION  <",
-                    new Vector2(0f, 48f), 235f, cockpit.ShowMission);
-                MakeButton(rt, "Btn_Controls", "CONTROLS  <",
-                    new Vector2(0f, -32f), 235f, cockpit.ShowControls);
-            }
-            else
-            {
-                MakeButton(rt, "Btn_Secondary", "LAB PANEL  <",
-                    new Vector2(0f, 48f), 235f, cockpit.ShowControls);
-                MakeButton(rt, "Btn_Back", "MISSION  <",
-                    new Vector2(0f, -32f), 235f, cockpit.GoToStory);
-            }
+            MakeButton(rt, "Btn_Secondary", "MISSION  <",
+                new Vector2(0f, 48f), 235f, cockpit.ShowMission);
+            MakeButton(rt, "Btn_Controls", "CONTROLS  <",
+                new Vector2(0f, -32f), 235f, cockpit.ShowControls);
             return go;
         }
 
         // ------------------------------------------------------------- mission panel (story)
         static StoryDirector BuildMissionPanel(Transform ship, Vector3 eye, SimulationController sim,
-                                      GravitationalWaveModel model, Transform earth, AITutor tutor)
+                                      GravitationalWaveModel model, Transform earth, Transform binary,
+                                      AITutor tutor, Project8.UI.RickVoice voice)
         {
             var dirGO = new GameObject("StoryDirector");
             var director = dirGO.AddComponent<StoryDirector>();
@@ -830,8 +795,10 @@ namespace Project8.EditorTools
             director.model = model;
             director.ship = ship;
             director.earth = earth;
+            director.binary = binary;
+            director.voice = voice;
             director.cockpit = ship.GetComponent<CockpitControls>();
-            director.flyTarget = new Vector3(0f, 0.9f, 7f);
+            director.flyTarget = new Vector3(-7f, 1.3f, 10f);
 
             var canvasGO = new GameObject("MissionPanel");
             var canvas = canvasGO.AddComponent<Canvas>();
@@ -864,16 +831,15 @@ namespace Project8.EditorTools
                 new Vector2(0f, -165f), 300f, director.StartMission);
             director.continueButton = MissionButton(rt, "Btn_Continue", "CONTINUE",
                 new Vector2(0f, -165f), 300f, director.ContinueMission);
-            director.labButton = MissionButton(rt, "Btn_WaveLab", "ENTER WAVE LAB",
-                new Vector2(0f, -165f), 300f, director.GoToWaveLab);
+            director.restartButton = MissionButton(rt, "Btn_Restart", "RESTART MISSION",
+                new Vector2(0f, -165f), 300f, director.RestartMission);
             director.continueButton.gameObject.SetActive(false);
-            director.labButton.gameObject.SetActive(false);
-            MissionButton(rt, "Btn_SkipLab", "WAVE LAB  ->", new Vector2(295f, -198f), 210f,
-                director.GoToWaveLab);
+            director.restartButton.gameObject.SetActive(false);
 
             // ask Rick: question input wired to the real LLM/local backend
             var chat = canvasGO.AddComponent<TutorChatUI>();
             chat.tutor = tutor;
+            chat.voice = voice;
             chat.answerText = director.narrationText;
             chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-140f, -112f),
                 400f, "Ask Rick a question...");
@@ -889,11 +855,11 @@ namespace Project8.EditorTools
             return t.transform.parent.GetComponent<Button>();
         }
 
-        // -------------------------------------------------- wave lab panel (merged controls)
-        static SimulationUI BuildWaveLabPanel(Transform ship, Vector3 eye, SimulationController sim,
+        // -------------------------------------------------- merged control panel
+        static SimulationUI BuildControlPanel(Transform ship, Vector3 eye, SimulationController sim,
                                       GravitationalWaveModel model, SimulationParameters parameters,
                                       PerspectiveController perspective, PredictionTask task,
-                                      AITutor tutor)
+                                      AITutor tutor, Project8.UI.RickVoice voice)
         {
             var libGO = new GameObject("WaveLibrary");
             var lib = libGO.AddComponent<WaveLibrary>();
@@ -929,7 +895,7 @@ namespace Project8.EditorTools
 
             MakeButton(rt, "Btn_CloseControls", "CLOSE  X",
                 new Vector2(370f, 420f), 140f, ship.GetComponent<CockpitControls>().TogglePanel);
-            MakeText(rt, "Title", "WAVE LAB  -  shape it, save it, replay it on Earth",
+            MakeText(rt, "Title", "CONTROL PANEL  -  shape the wave, save it, replay it",
                 22, FontStyle.Bold, TextAnchor.MiddleLeft, new Color(0.9f, 0.7f, 0.3f),
                 new Vector2(-30f, 415f), new Vector2(800f, 40f));
 
@@ -1001,6 +967,7 @@ namespace Project8.EditorTools
             // ask Rick: question input wired to the real LLM/local backend
             var chat = canvasGO.AddComponent<TutorChatUI>();
             chat.tutor = tutor;
+            chat.voice = voice;
             chat.answerText = MakeText(rt, "TutorAnswer", "", 15, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.85f, 0.92f, 1f),
                 new Vector2(0f, -395f), new Vector2(880f, 44f));
@@ -1013,7 +980,7 @@ namespace Project8.EditorTools
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
                 new Vector2(0f, -448f), new Vector2(920f, 26f));
             MakeText(rt, "Legend",
-                "orange tint = stretch   |   blue tint = squeeze   |   yellow ring = wavefront   |   green/red = ahead/behind",
+                "orange tint = stretch   |   blue tint = squeeze   |   nodes glow as the wavefront passes",
                 13, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.65f, 0.65f, 0.72f),
                 new Vector2(0f, -476f), new Vector2(920f, 20f));
             return ui;
@@ -1577,58 +1544,6 @@ namespace Project8.EditorTools
             return rig;
         }
 
-        // ------------------------------------------------------------------ markers
-        static GameObject MakeRingMarker(string name, Material mat, float radius, string label,
-                                         AudioClip hum = null, GravitationalWaveModel model = null,
-                                         SimulationController sim = null)
-        {
-            var go = new GameObject(name);
-            var lr = go.AddComponent<LineRenderer>();
-            lr.useWorldSpace = false;
-            lr.loop = true;
-            lr.positionCount = 64;
-            lr.widthMultiplier = 0.02f;
-            lr.material = mat;
-            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            lr.receiveShadows = false;
-            for (int i = 0; i < 64; i++)
-            {
-                float a = i * Mathf.PI * 2f / 64f;
-                lr.SetPosition(i, new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f) * radius);
-            }
-
-            var labelGO = new GameObject("Label");
-            labelGO.transform.SetParent(go.transform, false);
-            labelGO.transform.localPosition = new Vector3(0f, radius + 0.15f, 0f);
-            var tm = labelGO.AddComponent<TextMesh>();
-            tm.text = label;
-            tm.font = _font;
-            tm.fontSize = 48;
-            tm.characterSize = 0.05f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
-            tm.color = mat.color;
-            labelGO.GetComponent<MeshRenderer>().sharedMaterial = _font != null ? _font.material : mat;
-            labelGO.AddComponent<Project8.UI.Billboard>();
-            labelGO.SetActive(false);
-
-            if (hum != null)
-            {
-                var src = go.AddComponent<AudioSource>();
-                src.clip = hum;
-                src.loop = true;
-                src.spatialBlend = 1f;
-                src.rolloffMode = AudioRolloffMode.Linear;
-                src.maxDistance = 40f;
-                src.volume = 0f;
-                src.playOnAwake = true;
-                var cue = go.AddComponent<WavefrontAudio>();
-                cue.model = model;
-                cue.simulation = sim;
-            }
-            return go;
-        }
-
         static void MakeFloatingLabel(string text, Transform parent, Vector3 pos,
                                       float charSize, Color color, Vector3 viewer)
         {
@@ -1648,100 +1563,6 @@ namespace Project8.EditorTools
             go.transform.rotation = Quaternion.LookRotation((pos - viewer).normalized, Vector3.up);
             go.GetComponent<MeshRenderer>().sharedMaterial = _font != null ? _font.material : null;
             go.AddComponent<Project8.UI.Billboard>();
-        }
-
-        // ------------------------------------------------------------------ UI panel
-        static SimulationUI BuildControlPanel(SimulationController sim, GravitationalWaveModel model,
-                                              SimulationParameters parameters,
-                                              PerspectiveController perspective, PredictionTask task,
-                                              Transform shipRoot, Vector3 pos, Vector3 eye)
-        {
-            var canvasGO = new GameObject("ControlPanel");
-            var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvasGO.AddComponent<GraphicRaycaster>();
-            // lets XRI poke/ray interactors press the widgets (mouse still works in editor)
-            AddComponentByNames(canvasGO,
-                "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
-            var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(950f, 850f);
-            canvasGO.transform.SetParent(shipRoot, true);
-            canvasGO.transform.position = pos;
-            canvasGO.transform.localScale = Vector3.one * 0.00115f;
-            // dashboard tilt: face the seated eye position
-            canvasGO.transform.rotation = Quaternion.LookRotation((pos - eye).normalized, Vector3.up);
-
-            var bg = NewUIObject("Background", rt);
-            Stretch(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = _uiSprite;
-            bgImg.color = new Color(0.04f, 0.05f, 0.09f, 0.78f);
-            bgImg.type = Image.Type.Sliced;
-
-            var ui = canvasGO.AddComponent<SimulationUI>();
-            ui.simulation = sim;
-            ui.model = model;
-            ui.parameters = parameters;
-            ui.perspective = perspective;
-
-            MakeButton(rt, "Btn_CloseControls", "CLOSE  X",
-                new Vector2(370f, 380f), 140f, shipRoot.GetComponent<CockpitControls>().TogglePanel);
-
-            // header
-            var title = MakeText(rt, "Title", "PROJECT 08  -  SURFING A GRAVITATIONAL WAVE",
-                26, FontStyle.Bold, TextAnchor.MiddleCenter, Color.white,
-                new Vector2(0f, 335f), new Vector2(920f, 42f));
-            MakeText(rt, "Disclaimer",
-                "Simplified teaching model: deformation is EXAGGERATED and propagation is SLOWED - " +
-                "real gravitational waves move at the speed of light.",
-                15, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(1f, 0.85f, 0.35f),
-                new Vector2(0f, 270f), new Vector2(900f, 58f));
-
-            // row 1: transport controls
-            ui.playPauseButtonText = MakeButton(rt, "Btn_PlayPause", "Pause",
-                new Vector2(-340f, 175f), 150f, ui.OnPlayPause);
-            MakeButton(rt, "Btn_Slow", "0.25x", new Vector2(-170f, 175f), 110f, ui.OnSpeedQuarter);
-            MakeButton(rt, "Btn_Normal", "1x", new Vector2(-40f, 175f), 90f, ui.OnSpeedNormal);
-            MakeButton(rt, "Btn_Replay", "Replay", new Vector2(80f, 175f), 110f, ui.OnReplay);
-            MakeButton(rt, "Btn_Reset", "Reset", new Vector2(210f, 175f), 100f, ui.OnReset);
-
-            // row 2: perspective + prediction
-            ui.perspectiveButtonText = MakeButton(rt, "Btn_Ride", "Ride with the wave",
-                new Vector2(-170f, 100f), 260f, ui.OnTogglePerspective);
-            MakeButton(rt, "Btn_Predict", "Predict next mass",
-                new Vector2(120f, 100f), 220f, task.BeginPrediction);
-
-            // sliders
-            ui.amplitudeSlider = MakeSlider(rt, "Slider_Amplitude",
-                new Vector2(-60f, 10f), 460f, 0f, 1f, parameters.strainAmplitude, ui.SetAmplitude);
-            ui.amplitudeValueText = MakeText(rt, "AmpValue", "", 16, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 10f), new Vector2(250f, 30f));
-            MakeText(rt, "AmpLabel", "strain amplitude h0", 15, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, -25f), new Vector2(460f, 22f));
-
-            ui.frequencySlider = MakeSlider(rt, "Slider_Frequency",
-                new Vector2(-60f, -105f), 460f, 0.05f, 2f, parameters.frequencyHz, ui.SetFrequency);
-            ui.frequencyValueText = MakeText(rt, "FreqValue", "", 16, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, -105f), new Vector2(250f, 30f));
-            MakeText(rt, "FreqLabel", "frequency f (Hz)", 15, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, -140f), new Vector2(460f, 22f));
-
-            // status line
-            ui.statusText = MakeText(rt, "Status", "", 15, FontStyle.Normal,
-                TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
-                new Vector2(0f, -285f), new Vector2(920f, 30f));
-
-            // legend
-            MakeText(rt, "Legend",
-                "orange tint = stretch   |   blue tint = squeeze   |   yellow ring = wavefront   |   green/red = ahead/behind",
-                13, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.65f, 0.65f, 0.72f),
-                new Vector2(0f, -365f), new Vector2(920f, 24f));
-
-            return ui;
         }
 
         // ------------------------------------------------------------- UI helpers
@@ -1774,8 +1595,7 @@ namespace Project8.EditorTools
                 case "PROJECT 08  -  SURFING A GRAVITATIONAL WAVE": return "项目 08  -  冲浪引力波";
                 case "START MISSION": return "开始任务";
                 case "CONTINUE": return "继续";
-                case "ENTER WAVE LAB": return "进入波形实验室";
-                case "WAVE LAB  ->": return "波形实验室  ->";
+                case "RESTART MISSION": return "重新开始任务";
                 case "CLOSE  X": return "收起  X";
                 case "Pause": return "暂停";
                 case "Replay": return "重播";
@@ -1785,7 +1605,8 @@ namespace Project8.EditorTools
                 case "ASK RICK": return "提问 RICK";
                 case "strain amplitude h0": return "应变振幅 h0";
                 case "frequency f (Hz)": return "频率 f（赫兹）";
-                case "WAVE LAB  -  shape it, save it, replay it on Earth": return "波形实验室  -  调整、保存、回放";
+                case "CONTROL PANEL  -  shape the wave, save it, replay it":
+                    return "控制台  -  调整波形、保存、回放";
                 case "Save wave": return "保存波形";
                 case "Replay wave": return "回放波形";
                 case "click a slot: empty = save current wave, saved = load it": return "点击空槽保存波形，点击已存槽加载波形";
@@ -1798,7 +1619,7 @@ namespace Project8.EditorTools
                     if (english.StartsWith("Simplified teaching model:"))
                         return "简化教学模型：形变经过夸张，传播速度被放慢；真实引力波以光速传播。";
                     if (english.StartsWith("orange tint ="))
-                        return "橙色=拉伸  |  蓝色=挤压  |  黄色圆环=波前  |  绿/红=前方/后方";
+                        return "橙色=拉伸  |  蓝色=挤压  |  波前经过处节点变亮";
                     return null;
             }
         }
@@ -1817,8 +1638,7 @@ namespace Project8.EditorTools
                     return "PROJECT 08  -  SURFEN OP EEN ZWAARTEKRACHTGOLF";
                 case "START MISSION": return "MISSIE STARTEN";
                 case "CONTINUE": return "DOORGAAN";
-                case "ENTER WAVE LAB": return "NAAR HET GOLVENLAB";
-                case "WAVE LAB  ->": return "GOLVENLAB  ->";
+                case "RESTART MISSION": return "MISSIE HERSTARTEN";
                 case "CLOSE  X": return "SLUITEN  X";
                 case "Pause": return "Pauze";
                 case "Replay": return "Opnieuw";
@@ -1828,8 +1648,8 @@ namespace Project8.EditorTools
                 case "ASK RICK": return "VRAAG AAN RICK";
                 case "strain amplitude h0": return "rek-amplitude h0";
                 case "frequency f (Hz)": return "frequentie f (Hz)";
-                case "WAVE LAB  -  shape it, save it, replay it on Earth":
-                    return "GOLVENLAB  -  vorm het, sla het op, speel het af op de Aarde";
+                case "CONTROL PANEL  -  shape the wave, save it, replay it":
+                    return "BEDIENINGSPANEEL  -  vorm de golf, sla op, speel af";
                 case "Save wave": return "Golf opslaan";
                 case "Replay wave": return "Golf afspelen";
                 case "click a slot: empty = save current wave, saved = load it":
@@ -1845,7 +1665,7 @@ namespace Project8.EditorTools
                         return "Vereenvoudigd lesmodel: deformatie is OVERDREVEN en de voortplanting " +
                                "is VERTRAAGD - echte zwaartekrachtgolven gaan met lichtsnelheid.";
                     if (english.StartsWith("orange tint ="))
-                        return "oranje = uitrekken  |  blauw = samentrekken  |  gele ring = golffront  |  groen/rood = voor/achter";
+                        return "oranje = uitrekken  |  blauw = samentrekken  |  knopen lichten op bij het golffront";
                     return null;
             }
         }

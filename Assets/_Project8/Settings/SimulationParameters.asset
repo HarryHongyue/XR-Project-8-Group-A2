@@ -13,13 +13,13 @@ MonoBehaviour:
   m_Name: SimulationParameters
   m_EditorClassIdentifier: Assembly-CSharp::Project8.Core.SimulationParameters
   strainAmplitude: 0.5
-  frequencyHz: 0.9
+  frequencyHz: 0.55
   phaseRadians: 0
-  propagationAxis: 5
+  propagationAxis: 0
   waveMode: 2
   packetDurationSeconds: 4
   inspiralDurationSeconds: 8
   ringdownSeconds: 4
   postMergerResidual: 0.25
-  visualizationSpeedMps: 2.2
+  visualizationSpeedMps: 3.2
   displacementExaggeration: 1.6

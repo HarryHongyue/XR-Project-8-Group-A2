@@ -17,7 +17,7 @@ namespace Project8.Story
     ///   5. ship rides along the wavefront toward Earth
     ///   6. wave reaches Earth - exaggerated deformation
     ///   7. ship approaches Earth, narrator explains LIGO/laser interferometry
-    ///   8. "ENTER WAVE LAB" (also reachable any time via the skip button)
+    ///   8. RESTART MISSION replays the whole sequence from scratch
     /// </summary>
     public class StoryDirector : MonoBehaviour
     {
@@ -25,22 +25,23 @@ namespace Project8.Story
         public GravitationalWaveModel model;
         public Transform ship;
         public Transform earth;
+        public Transform binary;
         public CockpitControls cockpit;
+        public Project8.UI.RickVoice voice;
 
         [Header("UI wiring")]
         public Text narrationText;
         public Button startButton;
         public Button continueButton;
-        public Button labButton;
+        public Button restartButton;
 
         [Header("Choreography")]
-        public Vector3 flyTarget = new Vector3(0f, 0.9f, 7f);
+        public Vector3 flyTarget = new Vector3(-7f, 1.3f, 10f);
         public float flySeconds = 7f;
         public float rideLagBehindWavefront = 1.5f;
         public float rideLateralOffset = 3f;
         public float rideLiftY = 3.2f;
-        public Vector3 earthWatchOffset = new Vector3(0f, 6f, 15f);
-        public string waveLabScene = "WaveLab";
+        public Vector3 earthWatchOffset = new Vector3(-5f, 4.5f, -11f);
 
         enum Phase { Waiting, Flying, Explaining, Waves, RidingToEarth, ApproachingEarth, Done }
         Phase _phase = Phase.Waiting;
@@ -70,7 +71,7 @@ namespace Project8.Story
         {
             if (_phase == Phase.Waiting) StartMission();
             else if (_phase == Phase.Explaining) ContinueMission();
-            else if (_phase == Phase.Done) GoToWaveLab();
+            else if (_phase == Phase.Done) RestartMission();
         }
 
         public void StartMission()
@@ -96,14 +97,10 @@ namespace Project8.Story
                     "de golf komt eraan.");
         }
 
-        public void GoToWaveLab()
+        /// <summary>Reload the story scene: binary restored, simulation back to t = 0.</summary>
+        public void RestartMission()
         {
-            SceneManager.LoadScene(waveLabScene);
-        }
-
-        public void GoToStory()
-        {
-            SceneManager.LoadScene("Main");
+            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
 
         void Update()
@@ -114,6 +111,15 @@ namespace Project8.Story
                     _flyT += Time.deltaTime / flySeconds;
                     float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_flyT));
                     ship.position = Vector3.Lerp(_flyFrom, flyTarget, k);
+                    if (binary != null)
+                    {
+                        Vector3 face = binary.position - ship.position;
+                        face.y = 0f;
+                        if (face.sqrMagnitude > 0.01f)
+                            ship.rotation = Quaternion.Slerp(ship.rotation,
+                                Quaternion.LookRotation(face.normalized, Vector3.up),
+                                Time.deltaTime * 1.4f);
+                    }
                     if (_flyT >= 1f)
                     {
                         _phase = Phase.Explaining;
@@ -185,16 +191,19 @@ namespace Project8.Story
                                 "far too small to see. On Earth we measure them with laser " +
                                 "interferometers like LIGO: two perpendicular arms stretch and squeeze, " +
                                 "shifting the interference pattern. You will see that model in the " +
-                                "WAVE LAB - enter when ready.",
+                                "The red L-frame by the ship is that interferometer model - " +
+                                "watch its laser arms. Press RESTART MISSION to fly the whole " +
+                                "sequence again.",
                                 "Rick：真实引力波到达地球时应变仅约 10⁻²¹，肉眼完全无法看见。地球上的 LIGO " +
                                 "用激光干涉仪测量：两条互相垂直的臂被交替拉伸压缩，从而改变干涉图样。" +
-                                "波形实验室里就有这个模型，准备好后进入。",
+                                "飞船旁那个红色 L 形结构就是干涉仪模型，注意观察它的激光臂。" +
+                                "点击「重新开始任务」可以完整重看一遍。",
                                 "Rick: Echte zwaartekrachtgolven bereiken de Aarde met een amplitude van " +
                                 "slechts ~1e-21 - veel te klein om te zien. Op Aarde meten we ze met " +
                                 "laserinterferometers zoals LIGO: twee loodrechte armen rekken en " +
                                 "drukken afwisselend uit en samen, waardoor het interferentiepatroon " +
-                                "verschuift. Dat model zie je in het GOLVENLAB - ga naar binnen wanneer " +
-                                "je klaar bent.");
+                                "verschuift. Het rode L-frame bij het schip is dat model - " +
+                                "let op de laserarmen. Druk op MISSIE HERSTARTEN om alles opnieuw te zien.");
                         SetButtons(false, false, true);
                     }
                     break;
@@ -214,13 +223,14 @@ namespace Project8.Story
             {
                 narrationText.text = ExperienceSettings.IsDutch && dutch != null ? dutch : english;
             }
+            if (voice != null) voice.Speak(narrationText.text);
         }
 
-        void SetButtons(bool start, bool cont, bool lab)
+        void SetButtons(bool start, bool cont, bool restart)
         {
             if (startButton != null) startButton.gameObject.SetActive(start);
             if (continueButton != null) continueButton.gameObject.SetActive(cont);
-            if (labButton != null) labButton.gameObject.SetActive(lab);
+            if (restartButton != null) restartButton.gameObject.SetActive(restart);
         }
     }
 }

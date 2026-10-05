@@ -89,8 +89,8 @@ namespace Project8.Interaction
             if (keys.sKey.isPressed) movement -= transform.forward;
             if (keys.aKey.isPressed) movement -= transform.right;
             if (keys.dKey.isPressed) movement += transform.right;
-            if (keys.eKey.isPressed) movement += Vector3.up;
-            if (keys.qKey.isPressed) movement -= Vector3.up;
+            if (keys.eKey.isPressed || keys.spaceKey.isPressed) movement += Vector3.up;
+            if (keys.qKey.isPressed || keys.leftCtrlKey.isPressed) movement -= Vector3.up;
             float speed = flightSpeed *
                 ((keys.leftShiftKey.isPressed || keys.rightShiftKey.isPressed) ? boostMultiplier : 1f);
             transform.position += Vector3.ClampMagnitude(movement, 1f) * speed * Time.deltaTime;

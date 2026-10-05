@@ -14,6 +14,7 @@ namespace Project8.AI
         public AITutor tutor;
         public InputField questionInput;
         public Text answerText;
+        public RickVoice voice;
 
         void Start()
         {
@@ -51,6 +52,7 @@ namespace Project8.AI
             if (answerText == null) return;
             if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(answerText);
             answerText.text = s;
+            if (voice != null) voice.Speak(s);
         }
     }
 }

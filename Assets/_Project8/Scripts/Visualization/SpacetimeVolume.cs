@@ -31,9 +31,9 @@ namespace Project8.Visualization
         public GravityWell[] wells;
         public Material lineMaterial;
         public Material pointMaterial;
-        [Range(5, 41)] public int countX = 31;
-        [Range(3, 17)] public int countY = 11;
-        [Range(5, 41)] public int countZ = 33;
+        [Range(5, 61)] public int countX = 45;
+        [Range(3, 17)] public int countY = 13;
+        [Range(5, 61)] public int countZ = 45;
         public float spacing = 2.6f;
         public Vector3 centre = new Vector3(0f, 0.5f, 0f);
         public float pointSize = 0.12f;
@@ -72,7 +72,11 @@ namespace Project8.Visualization
                 _particles[i].remainingLifetime = 100000f;
             }
 
-            _mesh = new Mesh { name = "WorldSpacetimeLattice" };
+            _mesh = new Mesh
+            {
+                name = "WorldSpacetimeLattice",
+                indexFormat = UnityEngine.Rendering.IndexFormat.UInt32
+            };
             _mesh.MarkDynamic();
             _mesh.vertices = _positions;
             _mesh.SetIndices(links, MeshTopology.Lines, 0);
