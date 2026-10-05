@@ -13,7 +13,8 @@ namespace Project8.Interaction
         public GameObject compactPanel;
         public GameObject secondaryPanel;
         public StoryDirector story;
-        public float flightSpeed = 3f;
+        public float flightSpeed = 5f;
+        public float boostMultiplier = 3f;
         public float lookSensitivity = 0.12f;
         public Behaviour xrInputModule;
         public InputSystemUIInputModule desktopInputModule;
@@ -50,12 +51,21 @@ namespace Project8.Interaction
         public void OpenMission() => SetDrawer(Drawer.Secondary);
         public void ShowControls() => SetDrawer(_drawer == Drawer.Controls ? Drawer.None : Drawer.Controls);
         public void ClosePanels() => SetDrawer(Drawer.None);
+        public void GoToStory() => UnityEngine.SceneManagement.SceneManager.LoadScene("Main");
 
         void SetDrawer(Drawer drawer)
         {
             _drawer = drawer;
-            if (controlPanel != null) controlPanel.SetActive(drawer == Drawer.Controls);
-            if (secondaryPanel != null) secondaryPanel.SetActive(drawer == Drawer.Secondary);
+            if (controlPanel != null && controlPanel == secondaryPanel)
+            {
+                // Merged panel (Wave Lab): one object serves both drawers.
+                controlPanel.SetActive(drawer != Drawer.None);
+            }
+            else
+            {
+                if (controlPanel != null) controlPanel.SetActive(drawer == Drawer.Controls);
+                if (secondaryPanel != null) secondaryPanel.SetActive(drawer == Drawer.Secondary);
+            }
             if (compactPanel != null) compactPanel.SetActive(true);
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
@@ -81,11 +91,15 @@ namespace Project8.Interaction
             if (keys.dKey.isPressed) movement += transform.right;
             if (keys.eKey.isPressed) movement += Vector3.up;
             if (keys.qKey.isPressed) movement -= Vector3.up;
-            transform.position += Vector3.ClampMagnitude(movement, 1f) * flightSpeed * Time.deltaTime;
+            float speed = flightSpeed *
+                ((keys.leftShiftKey.isPressed || keys.rightShiftKey.isPressed) ? boostMultiplier : 1f);
+            transform.position += Vector3.ClampMagnitude(movement, 1f) * speed * Time.deltaTime;
 
             if (Mouse.current == null || !Mouse.current.rightButton.isPressed || seatedCamera == null) return;
             Vector2 delta = Mouse.current.delta.ReadValue() * lookSensitivity;
-            _yaw += delta.x;
+            // Horizontal drag yaws the SHIP so WASD stays aligned with the view;
+            // vertical drag pitches only the seated camera.
+            transform.Rotate(0f, delta.x, 0f, Space.World);
             _pitch = Mathf.Clamp(_pitch - delta.y, -60f, 70f);
             seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, _yaw, 0f);
         }

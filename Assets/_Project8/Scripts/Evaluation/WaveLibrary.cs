@@ -82,10 +82,14 @@ namespace Project8.Evaluation
                 slotTexts[i].text = i < _waves.Count
                     ? ExperienceSettings.IsChinese
                         ? $"波形 {i + 1}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
-                        : $"{_waves[i].name}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
+                        : ExperienceSettings.IsDutch
+                            ? $"Golf {i + 1}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
+                            : $"{_waves[i].name}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
                     : ExperienceSettings.IsChinese
                         ? $"波形 {i + 1}（空槽：点击保存）"
-                        : $"Wave {i + 1}  (empty - click to save current)";
+                        : ExperienceSettings.IsDutch
+                            ? $"Golf {i + 1}  (leeg - klik om op te slaan)"
+                            : $"Wave {i + 1}  (empty - click to save current)";
             }
         }
 

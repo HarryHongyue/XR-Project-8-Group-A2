@@ -29,14 +29,16 @@ namespace Project8.AI
     {
         readonly MonoBehaviour _runner;
         readonly string _endpoint, _apiKey, _model, _systemPrompt;
+        readonly bool _azureStyle;
 
         public HttpTutorBackend(MonoBehaviour runner, string endpoint, string apiKey,
-                                string model, string systemPrompt)
+                                string model, string systemPrompt, bool azureStyle = false)
         {
             _runner = runner; _endpoint = endpoint; _apiKey = apiKey;
-            _model = model; _systemPrompt = systemPrompt;
+            _model = model; _systemPrompt = systemPrompt; _azureStyle = azureStyle;
         }
 
+        /// <summary>Posts the question; onAnswer gets the reply text, or null on failure.</summary>
         public void Ask(string question, System.Action<string> onAnswer)
             => _runner.StartCoroutine(Post(question, onAnswer));
 
@@ -51,24 +53,35 @@ namespace Project8.AI
                     new ChatMessage { role = "user", content = question },
                 }
             });
-            // NOTE: JsonUtility cannot serialize nested arrays for some providers;
-            // for production use a real JSON library or hand-built payload.
 
             var req = new UnityWebRequest(_endpoint, UnityWebRequest.kHttpVerbPOST);
             req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
             req.downloadHandler = new DownloadHandlerBuffer();
             req.SetRequestHeader("Content-Type", "application/json");
             if (!string.IsNullOrEmpty(_apiKey))
-                req.SetRequestHeader("Authorization", "Bearer " + _apiKey);
-            req.timeout = 15;
+            {
+                // Azure OpenAI uses the "api-key" header; OpenAI-compatible services use Bearer.
+                if (_azureStyle) req.SetRequestHeader("api-key", _apiKey);
+                else req.SetRequestHeader("Authorization", "Bearer " + _apiKey);
+            }
+            req.timeout = 20;
             yield return req.SendWebRequest();
-            onAnswer?.Invoke(req.result == UnityWebRequest.Result.Success
-                ? req.downloadHandler.text
-                : "The tutor is offline right now - try the built-in explanation instead.");
+
+            string answer = null;
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                var response = JsonUtility.FromJson<ChatResponse>(req.downloadHandler.text);
+                if (response != null && response.choices != null && response.choices.Length > 0 &&
+                    response.choices[0].message != null)
+                    answer = response.choices[0].message.content;
+            }
+            onAnswer?.Invoke(answer);
         }
 
         [System.Serializable] class ChatRequest { public string model; public ChatMessage[] messages; }
         [System.Serializable] class ChatMessage { public string role; public string content; }
+        [System.Serializable] class ChatResponse { public Choice[] choices; }
+        [System.Serializable] class Choice { public ChatMessage message; }
     }
 
     /// <summary>
@@ -81,12 +94,17 @@ namespace Project8.AI
         [Header("Local backend")]
         public TutorKnowledgeBase knowledgeBase;
 
-        [Header("Optional LLM backend")]
-        public bool useRemoteBackend;
-        public string endpoint = "https://api.openai.com/v1/chat/completions";
-        public string model = "gpt-4o-mini";
-        [Tooltip("Read from environment variable OPENAI_API_KEY at runtime - never commit a key.")]
+        [Header("Optional LLM backend (OpenAI-compatible chat API)")]
+        public bool useRemoteBackend = true;
+        [Tooltip("Default: a local Ollama server - free, no API key. For OpenAI/Groq/etc. " +
+                 "use e.g. https://api.openai.com/v1/chat/completions plus an API key.")]
+        public string endpoint = "http://localhost:11434/v1/chat/completions";
+        public string model = "llama3.2";
+        [Tooltip("Environment variable that holds the API key (not needed for Ollama). " +
+                 "Never commit a key to the repo.")]
         public string apiKeyEnvironmentVariable = "OPENAI_API_KEY";
+        [Tooltip("Azure OpenAI sends the key as an 'api-key' header instead of Bearer auth.")]
+        public bool azureStyleAuth;
         [TextArea(2, 4)]
         public string systemPrompt =
             "You are a physics tutor inside a VR lesson about gravitational waves. " +
@@ -106,7 +124,7 @@ namespace Project8.AI
             if (useRemoteBackend && !string.IsNullOrEmpty(endpoint))
             {
                 string key = System.Environment.GetEnvironmentVariable(apiKeyEnvironmentVariable);
-                _backend = new HttpTutorBackend(this, endpoint, key, model, systemPrompt);
+                _backend = new HttpTutorBackend(this, endpoint, key, model, systemPrompt, azureStyleAuth);
             }
             else
             {
@@ -114,15 +132,27 @@ namespace Project8.AI
             }
         }
 
-        /// <summary>Ask the tutor; the answer arrives via onAnswer.</summary>
+        /// <summary>Ask the tutor; the answer arrives via onAnswer. Falls back to the
+        /// local knowledge base when the remote endpoint is unreachable.</summary>
         public void Ask(string question)
         {
             Evaluation.ResearchLogger.Instance?.LogEvent("TutorQuestion", question ?? "");
+            if (_backend == _local)
+            {
+                _local.Ask(question, Emit);
+                return;
+            }
             _backend.Ask(question, answer =>
             {
-                Evaluation.ResearchLogger.Instance?.LogEvent("TutorAnswer", answer ?? "");
-                onAnswer.Invoke(answer);
+                if (answer == null) _local.Ask(question, Emit);
+                else Emit(answer);
             });
+        }
+
+        void Emit(string answer)
+        {
+            Evaluation.ResearchLogger.Instance?.LogEvent("TutorAnswer", answer ?? "");
+            onAnswer.Invoke(answer);
         }
     }
 }

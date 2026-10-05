@@ -15,19 +15,28 @@ namespace Project8.Visualization
     /// </summary>
     public class SpacetimeVolume : MonoBehaviour
     {
+        /// <summary>A mass that dents the lattice - black holes dent deep, Earth shallowly.</summary>
+        [System.Serializable]
+        public struct GravityWell
+        {
+            public Transform source;
+            public float depth;
+            [Tooltip("Falloff scale of the dent in metres - larger spreads the dent wider.")]
+            public float radius;
+        }
+
         public GravitationalWaveModel model;
         public SimulationController simulation;
         public Transform ship;
-        public Transform[] blackHoles;
+        public GravityWell[] wells;
         public Material lineMaterial;
         public Material pointMaterial;
-        [Range(5, 31)] public int countX = 21;
-        [Range(3, 15)] public int countY = 7;
-        [Range(5, 31)] public int countZ = 21;
-        public float spacing = 3.2f;
+        [Range(5, 41)] public int countX = 31;
+        [Range(3, 17)] public int countY = 11;
+        [Range(5, 41)] public int countZ = 33;
+        public float spacing = 2.6f;
         public Vector3 centre = new Vector3(0f, 0.5f, 0f);
-        public float wellDepth = 2.2f;
-        public float pointSize = 0.14f;
+        public float pointSize = 0.12f;
         [Tooltip("Draw vertical (Y) links between horizontal layers. Off by default: " +
                  "horizontal sheets read more clearly.")]
         public bool connectLayers;
@@ -104,13 +113,15 @@ namespace Project8.Visualization
                     (y - (countY - 1) * 0.5f) * spacing,
                     (z - (countZ - 1) * 0.5f) * spacing);
                 Vector3 point = rest + model.DisplacementAt(rest, t);
-                if (blackHoles != null)
+                if (wells != null)
                 {
-                    foreach (var hole in blackHoles)
+                    foreach (var well in wells)
                     {
+                        var hole = well.source;
                         if (hole == null || !hole.gameObject.activeInHierarchy) continue;
                         Vector3 delta = hole.position - rest;
-                        float strength = wellDepth / (1f + delta.sqrMagnitude / 20f);
+                        float strength = well.depth /
+                            (1f + delta.sqrMagnitude / Mathf.Max(well.radius, 1f));
                         point += Vector3.down * strength +
                             new Vector3(delta.x, 0f, delta.z).normalized * (strength * 0.3f);
                     }

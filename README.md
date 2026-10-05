@@ -98,8 +98,21 @@ In the Unity Editor the same steps are on the **Project 8** menu.
 ## AI tutor
 
 AITutor answers questions from a curated, physics-grounded knowledge base by default.
-To use a live LLM, enable "useRemoteBackend" and provide the API key through the
-environment variable named in "apiKeyEnvironmentVariable" - keys are never committed.
+With "useRemoteBackend" enabled it calls any OpenAI-compatible chat endpoint
+(`/v1/chat/completions`) and falls back to the local knowledge base if the service
+is unreachable, so demos never break. Configured on the AITutor component:
+
+| Provider | endpoint | model | key |
+|---|---|---|---|
+| Ollama (default, local) | `http://localhost:11434/v1/chat/completions` | `llama3.2` | none needed |
+| NVIDIA NIM (free tier) | `https://integrate.api.nvidia.com/v1/chat/completions` | e.g. `meta/llama-3.1-8b-instruct` | free key from build.nvidia.com |
+| Groq (free tier) | `https://api.groq.com/openai/v1/chat/completions` | e.g. `llama-3.1-8b-instant` | free key from console.groq.com |
+| Azure OpenAI | `https://<res>.openai.azure.com/openai/deployments/<dep>/chat/completions?api-version=2024-02-01` | deployment name | key via env var |
+
+The API key is read from the environment variable named in
+"apiKeyEnvironmentVariable" (default `OPENAI_API_KEY`) - keys are never committed.
+The LLMUnity asset is an alternative (on-device inference), but the plain HTTP
+backend keeps the build small and works with any provider.
 
 ## Research data
 

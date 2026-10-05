@@ -8,6 +8,7 @@ namespace Project8.UI
     {
         public string english;
         public string chinese;
+        public string dutch;
         static Font _chineseFont;
 
         void OnEnable()
@@ -18,6 +19,8 @@ namespace Project8.UI
                 UseChineseFont(label);
                 label.text = chinese;
             }
+            else if (ExperienceSettings.IsDutch && !string.IsNullOrEmpty(dutch))
+                label.text = dutch;
             else if (!string.IsNullOrEmpty(english)) label.text = english;
         }
 

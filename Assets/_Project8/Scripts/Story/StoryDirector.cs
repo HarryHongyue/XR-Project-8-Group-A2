@@ -15,7 +15,9 @@ namespace Project8.Story
     ///   3. pause + AI explanation, user presses CONTINUE
     ///   4. merger chirp - wave sweeps past the net
     ///   5. ship rides along the wavefront toward Earth
-    ///   6. wave reaches Earth - exaggerated deformation, then "ENTER WAVE LAB"
+    ///   6. wave reaches Earth - exaggerated deformation
+    ///   7. ship approaches Earth, narrator explains LIGO/laser interferometry
+    ///   8. "ENTER WAVE LAB" (also reachable any time via the skip button)
     /// </summary>
     public class StoryDirector : MonoBehaviour
     {
@@ -37,9 +39,10 @@ namespace Project8.Story
         public float rideLagBehindWavefront = 1.5f;
         public float rideLateralOffset = 3f;
         public float rideLiftY = 3.2f;
+        public Vector3 earthWatchOffset = new Vector3(0f, 6f, 15f);
         public string waveLabScene = "WaveLab";
 
-        enum Phase { Waiting, Flying, Explaining, Waves, RidingToEarth, Done }
+        enum Phase { Waiting, Flying, Explaining, Waves, RidingToEarth, ApproachingEarth, Done }
         Phase _phase = Phase.Waiting;
         public bool CanPilot => _phase == Phase.Waiting || _phase == Phase.Explaining || _phase == Phase.Done;
         Vector3 _flyFrom;
@@ -54,7 +57,10 @@ namespace Project8.Story
             Narrate("Rick: Welcome aboard. Dead ahead a pair of black holes is about to merge. " +
                     "Their collision will send ripples through spacetime itself - gravitational waves. " +
                     "Press START MISSION when you are ready.",
-                    "Rick：欢迎登上飞船。前方的双黑洞即将合并，碰撞会释放引力波。准备好后点击「开始任务」。");
+                    "Rick：欢迎登上飞船。前方的双黑洞即将合并，碰撞会释放引力波。准备好后点击「开始任务」。",
+                    "Rick: Welkom aan boord. Recht voor ons staan twee zwarte gaten op het punt " +
+                    "samem te smelten. De botsing stuurt rimpelingen door de ruimtetijd zelf - " +
+                    "zwaartekrachtgolven. Druk op MISSIE STARTEN als je er klaar voor bent.");
             SetButtons(true, false, false);
         }
 
@@ -73,7 +79,8 @@ namespace Project8.Story
             _flyT = 0f;
             _phase = Phase.Flying;
             Narrate("Rick: Hold on - we are flying closer to the binary.",
-                    "Rick：坐稳，飞船正在接近双黑洞。");
+                    "Rick：坐稳，飞船正在接近双黑洞。",
+                    "Rick: Hou je vast - we vliegen dichter naar het dubbele systeem.");
             SetButtons(false, false, false);
         }
 
@@ -84,12 +91,19 @@ namespace Project8.Story
             simulation.Play();
             Narrate("Rick: Watch them fall toward each other. The flash marks the merger - " +
                     "the wave burst is on its way.",
-                    "Rick：观察它们加速靠近。闪光代表合并，随后引力波向外传播。");
+                    "Rick：观察它们加速靠近。闪光代表合并，随后引力波向外传播。",
+                    "Rick: Kijk hoe ze naar elkaar toe vallen. De flits markeert de samensmelting - " +
+                    "de golf komt eraan.");
         }
 
         public void GoToWaveLab()
         {
             SceneManager.LoadScene(waveLabScene);
+        }
+
+        public void GoToStory()
+        {
+            SceneManager.LoadScene("Main");
         }
 
         void Update()
@@ -107,7 +121,11 @@ namespace Project8.Story
                         Narrate("Rick: These two black holes orbit a shared centre of mass. " +
                                 "As they spiral inward their orbit speeds up - the strain they " +
                                 "emit sweeps upward like a chirp. Press CONTINUE to release the simulation.",
-                                "Rick：两个黑洞绕共同质心旋转。越靠近，转得越快；波的振幅与频率也会上升。点击「继续」。");
+                                "Rick：两个黑洞绕共同质心旋转。越靠近，转得越快；波的振幅与频率也会上升。点击「继续」。",
+                                "Rick: Deze twee zwarte gaten draaien om een gemeenschappelijk " +
+                                "zwaartepunt. Terwijl ze naar binnen spiraliseren versnelt hun baan - " +
+                                "de frequentie van de golven stijgt als een 'chirp'. Druk op DOORGAAN " +
+                                "om de simulatie vrij te geven.");
                         SetButtons(false, true, false);
                     }
                     break;
@@ -122,7 +140,9 @@ namespace Project8.Story
                         _rideOffset = u1 * rideLateralOffset;
                         Narrate("Rick: The wavefront is passing us - we are surfing it toward Earth. " +
                                 "Look at the net: space itself is stretching and squeezing.",
-                                "Rick：波前正穿过飞船。我们跟随被刻意放慢的可视化波形驶向地球；留意小球间的伸缩。");
+                                "Rick：波前正穿过飞船。我们跟随被刻意放慢的可视化波形驶向地球；留意小球间的伸缩。",
+                                "Rick: Het golffront passeert ons - we surfen erop richting de Aarde. " +
+                                "Kijk naar het net: de ruimte zelf rekt uit en drukt samen.");
                     }
                     break;
                 }
@@ -137,12 +157,44 @@ namespace Project8.Story
 
                     if (s >= _earthHitS)
                     {
+                        _phase = Phase.ApproachingEarth;
+                        Narrate("Rick: The wave just reached Earth - and stretched it, too. " +
+                                "We are approaching for a closer look.",
+                                "Rick：波刚刚抵达地球并拉伸了它。我们正在靠近观察。",
+                                "Rick: De golf heeft de Aarde net bereikt - en ook uitgerekt. " +
+                                "We vliegen dichterbij voor een beter kijkje.");
+                    }
+                    break;
+                }
+
+                case Phase.ApproachingEarth:
+                {
+                    if (earth == null) { _phase = Phase.Done; break; }
+                    Vector3 spot = earth.position + earthWatchOffset;
+                    ship.position = Vector3.Lerp(ship.position, spot, Time.deltaTime * 0.9f);
+                    Vector3 look = earth.position - ship.position;
+                    if (look.sqrMagnitude > 0.01f)
+                        ship.rotation = Quaternion.Slerp(ship.rotation,
+                            Quaternion.LookRotation(look.normalized, Vector3.up),
+                            Time.deltaTime * 1.2f);
+                    if ((ship.position - spot).sqrMagnitude < 0.6f)
+                    {
                         _phase = Phase.Done;
                         if (cockpit != null) cockpit.OpenMission();
-                        Narrate("Rick: The wave just reached Earth - and stretched it, too. " +
-                                "Real GWs do this at strain ~1e-21: invisible, so we exaggerated it. " +
-                                "Now it is your turn - enter the WAVE LAB.",
-                                "Rick：波到达地球。真实应变约为 10⁻²¹，肉眼无法看见，这里有意夸张。接下来进入波形实验室。");
+                        Narrate("Rick: Real gravitational waves reach Earth at a strain of only ~1e-21 - " +
+                                "far too small to see. On Earth we measure them with laser " +
+                                "interferometers like LIGO: two perpendicular arms stretch and squeeze, " +
+                                "shifting the interference pattern. You will see that model in the " +
+                                "WAVE LAB - enter when ready.",
+                                "Rick：真实引力波到达地球时应变仅约 10⁻²¹，肉眼完全无法看见。地球上的 LIGO " +
+                                "用激光干涉仪测量：两条互相垂直的臂被交替拉伸压缩，从而改变干涉图样。" +
+                                "波形实验室里就有这个模型，准备好后进入。",
+                                "Rick: Echte zwaartekrachtgolven bereiken de Aarde met een amplitude van " +
+                                "slechts ~1e-21 - veel te klein om te zien. Op Aarde meten we ze met " +
+                                "laserinterferometers zoals LIGO: twee loodrechte armen rekken en " +
+                                "drukken afwisselend uit en samen, waardoor het interferentiepatroon " +
+                                "verschuift. Dat model zie je in het GOLVENLAB - ga naar binnen wanneer " +
+                                "je klaar bent.");
                         SetButtons(false, false, true);
                     }
                     break;
@@ -150,11 +202,18 @@ namespace Project8.Story
             }
         }
 
-        void Narrate(string english, string chinese)
+        void Narrate(string english, string chinese, string dutch = null)
         {
             if (narrationText == null) return;
-            if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(narrationText);
-            narrationText.text = ExperienceSettings.IsChinese ? chinese : english;
+            if (ExperienceSettings.IsChinese)
+            {
+                LocalizedText.UseChineseFont(narrationText);
+                narrationText.text = chinese;
+            }
+            else
+            {
+                narrationText.text = ExperienceSettings.IsDutch && dutch != null ? dutch : english;
+            }
         }
 
         void SetButtons(bool start, bool cont, bool lab)
