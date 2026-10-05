@@ -40,6 +40,10 @@ namespace Project8.Visualization
         [Tooltip("Draw vertical (Y) links between horizontal layers. Off by default: " +
                  "horizontal sheets read more clearly.")]
         public bool connectLayers;
+        [Tooltip("Slide the whole lattice in whole-cell steps so it keeps surrounding " +
+                 "the ship - makes the grid feel effectively infinite. Nodes stay at " +
+                 "integer cell positions so the pattern never visibly re-samples.")]
+        public bool recenterOnShip = true;
 
         Mesh _mesh;
         Vector3[] _positions;
@@ -107,6 +111,22 @@ namespace Project8.Visualization
             float front = model.WavefrontDistance(t);
             Vector3 direction = model.PropagationDirection;
             Vector3 shipPos = ship != null ? ship.position : new Vector3(0f, -999f, 0f);
+
+            // Whole-cell re-centering: when the ship crosses half the lattice the grid
+            // jumps by an integer number of cells, so it stretches to the horizon in
+            // whichever direction the ship flies.
+            float halfX = (countX - 1) * spacing * 0.5f;
+            float halfZ = (countZ - 1) * spacing * 0.5f;
+            if (recenterOnShip && ship != null)
+            {
+                float dx = ship.position.x - centre.x;
+                float dz = ship.position.z - centre.z;
+                if (Mathf.Abs(dx) > halfX * 0.5f)
+                    centre.x += Mathf.Round(dx / spacing) * spacing;
+                if (Mathf.Abs(dz) > halfZ * 0.5f)
+                    centre.z += Mathf.Round(dz / spacing) * spacing;
+            }
+            float edgeFadeBand = spacing * 4f;
             for (int z = 0; z < countZ; z++)
             for (int y = 0; y < countY; y++)
             for (int x = 0; x < countX; x++)
@@ -132,6 +152,11 @@ namespace Project8.Visualization
                 }
                 _positions[i] = point;
                 float fade = Mathf.Clamp01((Vector3.Distance(rest, shipPos) - 2.7f) / 3f);
+                // Fade the outer band so the lattice dissolves into the dark instead of
+                // ending in a hard wall - reads as an endless grid.
+                float edge = Mathf.Clamp01((halfX - Mathf.Abs(rest.x - centre.x)) / edgeFadeBand) *
+                             Mathf.Clamp01((halfZ - Mathf.Abs(rest.z - centre.z)) / edgeFadeBand);
+                fade *= edge;
                 float distanceFromFront = front - Vector3.Dot(rest - model.Origin, direction);
                 float pulse = Mathf.Exp(-0.5f * distanceFromFront * distanceFromFront / 3.5f);
                 float h = model.StrainAt(rest, t);

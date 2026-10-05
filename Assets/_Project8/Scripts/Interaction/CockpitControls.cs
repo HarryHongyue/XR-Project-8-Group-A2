@@ -82,24 +82,34 @@ namespace Project8.Interaction
                 if (_drawer != Drawer.Secondary) ShowMission();
                 story.Advance();
             }
-            if (_drawer != Drawer.None || story != null && !story.CanPilot) return;
+            bool piloting = _drawer == Drawer.None && (story == null || story.CanPilot);
+            if (piloting)
+            {
+                Vector3 movement = Vector3.zero;
+                if (keys.wKey.isPressed) movement += transform.forward;
+                if (keys.sKey.isPressed) movement -= transform.forward;
+                if (keys.aKey.isPressed) movement -= transform.right;
+                if (keys.dKey.isPressed) movement += transform.right;
+                if (keys.eKey.isPressed || keys.spaceKey.isPressed) movement += Vector3.up;
+                if (keys.qKey.isPressed || keys.leftCtrlKey.isPressed) movement -= Vector3.up;
+                float speed = flightSpeed *
+                    ((keys.leftShiftKey.isPressed || keys.rightShiftKey.isPressed) ? boostMultiplier : 1f);
+                transform.position += Vector3.ClampMagnitude(movement, 1f) * speed * Time.deltaTime;
+            }
 
-            Vector3 movement = Vector3.zero;
-            if (keys.wKey.isPressed) movement += transform.forward;
-            if (keys.sKey.isPressed) movement -= transform.forward;
-            if (keys.aKey.isPressed) movement -= transform.right;
-            if (keys.dKey.isPressed) movement += transform.right;
-            if (keys.eKey.isPressed || keys.spaceKey.isPressed) movement += Vector3.up;
-            if (keys.qKey.isPressed || keys.leftCtrlKey.isPressed) movement -= Vector3.up;
-            float speed = flightSpeed *
-                ((keys.leftShiftKey.isPressed || keys.rightShiftKey.isPressed) ? boostMultiplier : 1f);
-            transform.position += Vector3.ClampMagnitude(movement, 1f) * speed * Time.deltaTime;
-
-            if (Mouse.current == null || !Mouse.current.rightButton.isPressed || seatedCamera == null) return;
+            // Free mouse-look in desktop mode: the view follows the mouse directly,
+            // no button hold required. Paused while the pointer is over UI so panel
+            // clicks never rotate the view. While piloting, horizontal motion yaws
+            // the SHIP so WASD stays aligned; during story cinematics it only turns
+            // the head so the ship keeps its choreographed course. In VR the
+            // TrackedPoseDriver owns the camera instead (real head tracking).
+            if (Mouse.current == null || seatedCamera == null) return;
+            bool overUI = UnityEngine.EventSystems.EventSystem.current != null &&
+                          UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+            if (overUI) return;
             Vector2 delta = Mouse.current.delta.ReadValue() * lookSensitivity;
-            // Horizontal drag yaws the SHIP so WASD stays aligned with the view;
-            // vertical drag pitches only the seated camera.
-            transform.Rotate(0f, delta.x, 0f, Space.World);
+            if (piloting) transform.Rotate(0f, delta.x, 0f, Space.World);
+            else _yaw = Mathf.Clamp(_yaw + delta.x, -80f, 80f);
             _pitch = Mathf.Clamp(_pitch - delta.y, -60f, 70f);
             seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, _yaw, 0f);
         }

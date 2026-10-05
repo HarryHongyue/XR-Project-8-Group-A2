@@ -489,8 +489,9 @@ namespace Project8.EditorTools
             Vector3 eye = seatPos + new Vector3(0f, 1.25f, 0f);
             // Side-on viewing geometry: the binary sits left-front, the wave travels
             // +X laterally across the view, and Earth is ~45 degrees to the right.
-            Vector3 binaryPos = new Vector3(-13f, 1.8f, 20f);
-            Vector3 earthPos = new Vector3(22f, -4f, 20f);
+            // The 68 m baseline gives the slowed wave ~21 s of visible travel time.
+            Vector3 binaryPos = new Vector3(-16f, 1.8f, 22f);
+            Vector3 earthPos = new Vector3(52f, -4f, 22f);
 
             // --- space environment --------------------------------------------
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
@@ -556,21 +557,24 @@ namespace Project8.EditorTools
                 new SpacetimeVolume.GravityWell { source = binary.blackHoleA, depth = 5.5f, radius = 150f },
                 new SpacetimeVolume.GravityWell { source = binary.blackHoleB, depth = 5.5f, radius = 150f },
                 new SpacetimeVolume.GravityWell { source = binary.mergedHole, depth = 5.5f, radius = 150f },
-                new SpacetimeVolume.GravityWell { source = earth.transform, depth = 2.4f, radius = 120f },
+                // Earth is a planet, not a black hole, but it is still a heavy mass:
+                // give it a clearly visible wide dip, a bit shallower than the holes.
+                new SpacetimeVolume.GravityWell { source = earth.transform, depth = 3.4f, radius = 220f },
             };
             volume.wells = wells.ToArray();
             volume.lineMaterial = mats.NetLine;
             volume.pointMaterial = CreateStarMaterial();
-            volume.countX = 45;
+            volume.countX = 61;
             volume.countY = 13;
-            volume.countZ = 45;
-            volume.spacing = 1.8f;
+            volume.countZ = 61;
+            volume.spacing = 2f;
             volume.pointSize = 0.09f;
-            volume.centre = new Vector3(4f, 0.5f, 10f);
+            volume.centre = new Vector3(18f, 0.5f, 16f);
             volume.connectLayers = false;
+            volume.recenterOnShip = true;
 
             var fieldGO = new GameObject("PredictionTestMasses");
-            fieldGO.transform.position = new Vector3(-4f, 1.8f, 14f);
+            fieldGO.transform.position = new Vector3(-5f, 1.8f, 15f);
             var field = fieldGO.AddComponent<TestMassField>();
             field.model = model;
             field.simulation = controller;
@@ -798,7 +802,7 @@ namespace Project8.EditorTools
             director.binary = binary;
             director.voice = voice;
             director.cockpit = ship.GetComponent<CockpitControls>();
-            director.flyTarget = new Vector3(-7f, 1.3f, 10f);
+            director.flyTarget = new Vector3(-7f, 1.3f, 11f);
 
             var canvasGO = new GameObject("MissionPanel");
             var canvas = canvasGO.AddComponent<Canvas>();
@@ -1686,6 +1690,9 @@ namespace Project8.EditorTools
             text.color = color;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
+            // Labels never take pointer input - otherwise the value texts that overlap
+            // the sliders turn parts of the track into dead zones that cannot be dragged.
+            text.raycastTarget = false;
             string chinese = ChineseText(content);
             string dutch = DutchText(content);
             if (!string.IsNullOrEmpty(chinese) || !string.IsNullOrEmpty(dutch))
@@ -1778,6 +1785,9 @@ namespace Project8.EditorTools
             slider.minValue = min;
             slider.maxValue = max;
             slider.wholeNumbers = false;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.navigation = new Navigation { mode = Navigation.Mode.None };
+            slider.interactable = true;
 
             var bg = NewUIObject("Background", rt);
             Stretch(bg);

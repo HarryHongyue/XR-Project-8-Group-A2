@@ -139,7 +139,10 @@ namespace Project8.Story
                 case Phase.Waves:
                 {
                     float s = model.WavefrontDistance(simulation.SimulationTime);
-                    if (s >= SOf(ship.position) + 0.5f)
+                    // Wait for the merger flash before leaving: the user watches the
+                    // whole inspiral from the side, then the ship starts its ride.
+                    bool merged = simulation.SimulationTime >= model.parameters.inspiralDurationSeconds;
+                    if (merged && s >= SOf(ship.position) + 0.5f)
                     {
                         _phase = Phase.RidingToEarth;
                         model.GetTransverseAxes(out Vector3 u1, out _);
@@ -160,6 +163,12 @@ namespace Project8.Story
                     Vector3 target = model.Origin + model.PropagationDirection * lagged + _rideOffset;
                     target.y = Mathf.Lerp(ship.position.y, rideLiftY, Time.deltaTime * 0.8f);
                     ship.position = Vector3.Lerp(ship.position, target, Time.deltaTime * 2f);
+                    // Pure lateral cruise: hold the heading perpendicular to the wave so
+                    // the wavefront sweeps left-to-right across the window, and do not
+                    // steer again until the Earth approach phase takes over.
+                    Vector3 flat = Vector3.Cross(model.PropagationDirection, Vector3.up).normalized;
+                    ship.rotation = Quaternion.Slerp(ship.rotation,
+                        Quaternion.LookRotation(flat, Vector3.up), Time.deltaTime * 0.9f);
 
                     if (s >= _earthHitS)
                     {
