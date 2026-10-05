@@ -155,27 +155,34 @@ namespace Project8.EditorTools
         {
             if (!EditorApplication.isPlaying) return;
             if (_smokeStart <= 0d) _smokeStart = EditorApplication.timeSinceStartup;
-            if (EditorApplication.timeSinceStartup - _smokeStart < 3d) return;
+            double elapsed = EditorApplication.timeSinceStartup - _smokeStart;
+
+            var volume = UnityEngine.Object.FindAnyObjectByType<SpacetimeVolume>();
+            var mesh = volume != null ? volume.GetComponent<MeshFilter>().sharedMesh : null;
+            var points = volume != null ? volume.GetComponentInChildren<ParticleSystem>() : null;
+            var stars = GameObject.Find("Starfield")?.GetComponent<ParticleSystem>();
+            bool ready = mesh != null && mesh.vertexCount >= 2000 && points != null &&
+                         points.particleCount >= 2000 &&
+                         stars != null && stars.particleCount >= 500;
+            if (!ready)
+            {
+                // Play-mode startup in batch mode is slow; keep polling until the deadline.
+                if (elapsed < 25d) return;
+                EditorApplication.update -= CheckSmokeScene;
+                SessionState.SetBool(SmokeSessionKey, false);
+                Debug.LogError("[Project8] Play smoke failed: spacetime volume or textured " +
+                               "stars did not animate in Play mode within 25s " +
+                               $"(mesh={(mesh != null ? mesh.vertexCount : -1)}, " +
+                               $"points={(points != null ? points.particleCount : -1)}, " +
+                               $"stars={(stars != null ? stars.particleCount : -1)})");
+                EditorApplication.Exit(1);
+                return;
+            }
             EditorApplication.update -= CheckSmokeScene;
             SessionState.SetBool(SmokeSessionKey, false);
-            try
-            {
-                var volume = UnityEngine.Object.FindAnyObjectByType<SpacetimeVolume>();
-                var mesh = volume != null ? volume.GetComponent<MeshFilter>().sharedMesh : null;
-                var points = volume != null ? volume.GetComponentInChildren<ParticleSystem>() : null;
-                var stars = GameObject.Find("Starfield")?.GetComponent<ParticleSystem>();
-                if (mesh == null || mesh.vertexCount < 2000 || points == null ||
-                    points.particleCount < 2000 || stars == null || stars.particleCount < 500)
-                    throw new InvalidOperationException("Spacetime volume or textured stars did not animate in Play mode");
-                Debug.Log($"[Project8] Play smoke passed: {mesh.vertexCount} lattice nodes, " +
-                          $"{points.particleCount} test-mass particles, {stars.particleCount} stars.");
-                EditorApplication.Exit(0);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Project8] Play smoke failed: {e}");
-                EditorApplication.Exit(1);
-            }
+            Debug.Log($"[Project8] Play smoke passed: {mesh.vertexCount} lattice nodes, " +
+                      $"{points.particleCount} test-mass particles, {stars.particleCount} stars.");
+            EditorApplication.Exit(0);
         }
 
         static void LoadBuiltins()
@@ -312,9 +319,10 @@ namespace Project8.EditorTools
             p.waveMode = mode;
             p.packetDurationSeconds = 4f;
             p.inspiralDurationSeconds = 8f;
-            p.ringdownSeconds = 2.5f;
+            p.ringdownSeconds = 4f;
+            p.postMergerResidual = 0.25f;
             p.visualizationSpeedMps = 2.2f;
-            p.displacementExaggeration = 1f;
+            p.displacementExaggeration = 1.6f;
             EditorUtility.SetDirty(p);
             return p;
         }
@@ -500,6 +508,7 @@ namespace Project8.EditorTools
 
             // --- simulation core ----------------------------------------------
             var simGO = new GameObject("Simulation");
+            simGO.AddComponent<EntryGate>();
             var model = simGO.AddComponent<GravitationalWaveModel>();
             model.parameters = parameters;
             var controller = simGO.AddComponent<SimulationController>();
@@ -545,6 +554,12 @@ namespace Project8.EditorTools
             volume.blackHoles = wellSources;
             volume.lineMaterial = mats.NetLine;
             volume.pointMaterial = CreateStarMaterial();
+            volume.countX = 21;
+            volume.countY = 7;
+            volume.countZ = 21;
+            volume.spacing = 3.2f;
+            volume.centre = new Vector3(0f, 0.5f, 0f);
+            volume.connectLayers = false;
 
             var fieldGO = new GameObject("PredictionTestMasses");
             fieldGO.transform.position = new Vector3(0f, 1.8f, 12f);
@@ -801,6 +816,8 @@ namespace Project8.EditorTools
                 new Vector2(0f, -165f), 300f, director.GoToWaveLab);
             director.continueButton.gameObject.SetActive(false);
             director.labButton.gameObject.SetActive(false);
+            MissionButton(rt, "Btn_SkipLab", "WAVE LAB  ->", new Vector2(295f, -198f), 210f,
+                director.GoToWaveLab);
             return director;
         }
 
@@ -1634,6 +1651,7 @@ namespace Project8.EditorTools
                 case "START MISSION": return "开始任务";
                 case "CONTINUE": return "继续";
                 case "ENTER WAVE LAB": return "进入波形实验室";
+                case "WAVE LAB  ->": return "波形实验室  ->";
                 case "CLOSE  X": return "收起  X";
                 case "Pause": return "暂停";
                 case "Replay": return "重播";

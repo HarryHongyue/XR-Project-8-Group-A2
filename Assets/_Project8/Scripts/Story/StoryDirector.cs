@@ -51,10 +51,10 @@ namespace Project8.Story
         {
             simulation.Pause();
             _earthHitS = SOf(earth != null ? earth.position : Vector3.back * 20f) - 7f;
-            Narrate("AI: Welcome aboard. Dead ahead a pair of black holes is about to merge. " +
+            Narrate("Rick: Welcome aboard. Dead ahead a pair of black holes is about to merge. " +
                     "Their collision will send ripples through spacetime itself - gravitational waves. " +
                     "Press START MISSION when you are ready.",
-                    "AI：欢迎登上飞船。前方的双黑洞即将合并，碰撞会释放引力波。准备好后点击「开始任务」。");
+                    "Rick：欢迎登上飞船。前方的双黑洞即将合并，碰撞会释放引力波。准备好后点击「开始任务」。");
             SetButtons(true, false, false);
         }
 
@@ -72,8 +72,8 @@ namespace Project8.Story
             _flyFrom = ship.position;
             _flyT = 0f;
             _phase = Phase.Flying;
-            Narrate("AI: Hold on - we are flying closer to the binary.",
-                    "AI：坐稳，飞船正在接近双黑洞。");
+            Narrate("Rick: Hold on - we are flying closer to the binary.",
+                    "Rick：坐稳，飞船正在接近双黑洞。");
             SetButtons(false, false, false);
         }
 
@@ -82,9 +82,9 @@ namespace Project8.Story
             _phase = Phase.Waves;
             continueButton.gameObject.SetActive(false);
             simulation.Play();
-            Narrate("AI: Watch them fall toward each other. The flash marks the merger - " +
+            Narrate("Rick: Watch them fall toward each other. The flash marks the merger - " +
                     "the wave burst is on its way.",
-                    "AI：观察它们加速靠近。闪光代表合并，随后引力波向外传播。");
+                    "Rick：观察它们加速靠近。闪光代表合并，随后引力波向外传播。");
         }
 
         public void GoToWaveLab()
@@ -104,10 +104,10 @@ namespace Project8.Story
                     {
                         _phase = Phase.Explaining;
                         if (cockpit != null) cockpit.OpenMission();
-                        Narrate("AI: These two black holes orbit a shared centre of mass. " +
+                        Narrate("Rick: These two black holes orbit a shared centre of mass. " +
                                 "As they spiral inward their orbit speeds up - the strain they " +
                                 "emit sweeps upward like a chirp. Press CONTINUE to release the simulation.",
-                                "AI：两个黑洞绕共同质心旋转。越靠近，转得越快；波的振幅与频率也会上升。点击「继续」。");
+                                "Rick：两个黑洞绕共同质心旋转。越靠近，转得越快；波的振幅与频率也会上升。点击「继续」。");
                         SetButtons(false, true, false);
                     }
                     break;
@@ -120,9 +120,9 @@ namespace Project8.Story
                         _phase = Phase.RidingToEarth;
                         model.GetTransverseAxes(out Vector3 u1, out _);
                         _rideOffset = u1 * rideLateralOffset;
-                        Narrate("AI: The wavefront is passing us - we are surfing it toward Earth. " +
+                        Narrate("Rick: The wavefront is passing us - we are surfing it toward Earth. " +
                                 "Look at the net: space itself is stretching and squeezing.",
-                                "AI：波前正穿过飞船。我们跟随被刻意放慢的可视化波形驶向地球；留意小球间的伸缩。");
+                                "Rick：波前正穿过飞船。我们跟随被刻意放慢的可视化波形驶向地球；留意小球间的伸缩。");
                     }
                     break;
                 }
@@ -139,10 +139,10 @@ namespace Project8.Story
                     {
                         _phase = Phase.Done;
                         if (cockpit != null) cockpit.OpenMission();
-                        Narrate("AI: The wave just reached Earth - and stretched it, too. " +
+                        Narrate("Rick: The wave just reached Earth - and stretched it, too. " +
                                 "Real GWs do this at strain ~1e-21: invisible, so we exaggerated it. " +
                                 "Now it is your turn - enter the WAVE LAB.",
-                                "AI：波到达地球。真实应变约为 10⁻²¹，肉眼无法看见，这里有意夸张。接下来进入波形实验室。");
+                                "Rick：波到达地球。真实应变约为 10⁻²¹，肉眼无法看见，这里有意夸张。接下来进入波形实验室。");
                         SetButtons(false, false, true);
                     }
                     break;

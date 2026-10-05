@@ -39,6 +39,9 @@ observer transformations. The ride mode is never described as a literal physical
 The spaceship scene uses WaveMode.Chirp: a qualitative binary-inspiral waveform.
 Instantaneous frequency sweeps from 0.25 x f_peak up to frequencyHz over
 inspiralDurationSeconds while amplitude grows with the square root of progress,
-followed by an exponential ringdown of time constant ringdownSeconds. This mirrors
-the GW150914-like chirp shape that the binary black-hole visual shows orbiting and
-merging. It is still a teaching approximation, not a numerical-relativity template.
+followed by an exponential ringdown of time constant ringdownSeconds. A stylized
+residual floor (postMergerResidual, ~0.25 x peak) keeps a gentle post-merger
+oscillation so the visualization never goes flat - real ringdowns decay to zero.
+This mirrors the GW150914-like chirp shape that the binary black-hole visual shows
+orbiting and merging. It is still a teaching approximation, not a numerical-
+relativity template.

@@ -19,6 +19,7 @@ MonoBehaviour:
   waveMode: 1
   packetDurationSeconds: 4
   inspiralDurationSeconds: 8
-  ringdownSeconds: 2.5
+  ringdownSeconds: 4
+  postMergerResidual: 0.25
   visualizationSpeedMps: 2.2
-  displacementExaggeration: 1
+  displacementExaggeration: 1.6

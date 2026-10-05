@@ -101,7 +101,10 @@ namespace Project8.Core
                 float tr = tau - td;
                 float phaseAtMerger = 2f * Mathf.PI * (f0 * td + (f1 - f0) * td * 0.5f)
                                       + p.phaseRadians;
-                float amp = p.strainAmplitude * Mathf.Exp(-tr / p.ringdownSeconds);
+                // Stylized residual floor: real ringdowns decay to zero, but a small
+                // sustained oscillation keeps the post-merger wave visible for teaching.
+                float amp = p.strainAmplitude *
+                    Mathf.Max(Mathf.Exp(-tr / p.ringdownSeconds), p.postMergerResidual);
                 return amp * Mathf.Sin(phaseAtMerger + 2f * Mathf.PI * f1 * tr);
             }
         }

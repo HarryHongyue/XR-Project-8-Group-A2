@@ -3,6 +3,16 @@ using Project8.Core;
 
 namespace Project8.Visualization
 {
+    /// <summary>
+    /// World-fixed volumetric lattice of test-mass nodes. The grid does NOT move with
+    /// the ship - it fills the space around the ship, the binary and the Earth, so the
+    /// gravitational wave visibly ripples through the whole scene.
+    ///
+    /// Links are drawn inside each horizontal (XZ) layer; vertical (Y) links are off by
+    /// default because horizontal sheets make the transverse stretch/squeeze easiest to
+    /// read. Nodes still displace along both transverse axes of the wave model and are
+    /// pulled into a stylized "gravity well" near each black hole.
+    /// </summary>
     public class SpacetimeVolume : MonoBehaviour
     {
         public GravitationalWaveModel model;
@@ -11,13 +21,16 @@ namespace Project8.Visualization
         public Transform[] blackHoles;
         public Material lineMaterial;
         public Material pointMaterial;
-        [Range(5, 25)] public int countX = 17;
-        [Range(5, 21)] public int countY = 11;
-        [Range(5, 25)] public int countZ = 21;
-        public float spacing = 1.45f;
+        [Range(5, 31)] public int countX = 21;
+        [Range(3, 15)] public int countY = 7;
+        [Range(5, 31)] public int countZ = 21;
+        public float spacing = 3.2f;
+        public Vector3 centre = new Vector3(0f, 0.5f, 0f);
         public float wellDepth = 2.2f;
-        public float pointSize = 0.12f;
-        public bool showDepthLinks;
+        public float pointSize = 0.14f;
+        [Tooltip("Draw vertical (Y) links between horizontal layers. Off by default: " +
+                 "horizontal sheets read more clearly.")]
+        public bool connectLayers;
 
         Mesh _mesh;
         Vector3[] _positions;
@@ -32,9 +45,10 @@ namespace Project8.Visualization
             _colors = new Color[count];
             _particles = new ParticleSystem.Particle[count];
 
-            int[] links = new int[2 * ((countX - 1) * countY * countZ +
-                countX * (countY - 1) * countZ +
-                (showDepthLinks ? countX * countY * (countZ - 1) : 0))];
+            int linkCount = (countX - 1) * countY * countZ +
+                            countX * countY * (countZ - 1) +
+                            (connectLayers ? countX * (countY - 1) * countZ : 0);
+            int[] links = new int[2 * linkCount];
             int link = 0;
             for (int z = 0; z < countZ; z++)
             for (int y = 0; y < countY; y++)
@@ -42,14 +56,14 @@ namespace Project8.Visualization
             {
                 int i = Index(x, y, z);
                 if (x + 1 < countX) { links[link++] = i; links[link++] = Index(x + 1, y, z); }
-                if (y + 1 < countY) { links[link++] = i; links[link++] = Index(x, y + 1, z); }
-                if (showDepthLinks && z + 1 < countZ)
-                { links[link++] = i; links[link++] = Index(x, y, z + 1); }
+                if (z + 1 < countZ) { links[link++] = i; links[link++] = Index(x, y, z + 1); }
+                if (connectLayers && y + 1 < countY)
+                { links[link++] = i; links[link++] = Index(x, y + 1, z); }
                 _particles[i].startLifetime = 100000f;
                 _particles[i].remainingLifetime = 100000f;
             }
 
-            _mesh = new Mesh { name = "ContinuousSpacetimeLattice" };
+            _mesh = new Mesh { name = "WorldSpacetimeLattice" };
             _mesh.MarkDynamic();
             _mesh.vertices = _positions;
             _mesh.SetIndices(links, MeshTopology.Lines, 0);
@@ -75,19 +89,20 @@ namespace Project8.Visualization
 
         void LateUpdate()
         {
-            if (_mesh == null || ship == null || model == null || simulation == null) return;
-            Vector3 centre = ship.position + ship.forward * 12f + Vector3.up * 1.8f;
+            if (_mesh == null || model == null || simulation == null) return;
             float t = simulation.SimulationTime;
             float front = model.WavefrontDistance(t);
             Vector3 direction = model.PropagationDirection;
+            Vector3 shipPos = ship != null ? ship.position : new Vector3(0f, -999f, 0f);
             for (int z = 0; z < countZ; z++)
             for (int y = 0; y < countY; y++)
             for (int x = 0; x < countX; x++)
             {
                 int i = Index(x, y, z);
-                Vector3 rest = centre + ship.right * ((x - (countX - 1) * 0.5f) * spacing) +
-                    ship.up * ((y - (countY - 1) * 0.5f) * spacing) +
-                    ship.forward * ((z - (countZ - 1) * 0.5f) * spacing);
+                Vector3 rest = centre + new Vector3(
+                    (x - (countX - 1) * 0.5f) * spacing,
+                    (y - (countY - 1) * 0.5f) * spacing,
+                    (z - (countZ - 1) * 0.5f) * spacing);
                 Vector3 point = rest + model.DisplacementAt(rest, t);
                 if (blackHoles != null)
                 {
@@ -101,18 +116,18 @@ namespace Project8.Visualization
                     }
                 }
                 _positions[i] = point;
-                float fade = Mathf.Clamp01((Vector3.Distance(rest, ship.position) - 2.7f) / 3f);
+                float fade = Mathf.Clamp01((Vector3.Distance(rest, shipPos) - 2.7f) / 3f);
                 float distanceFromFront = front - Vector3.Dot(rest - model.Origin, direction);
                 float pulse = Mathf.Exp(-0.5f * distanceFromFront * distanceFromFront / 3.5f);
                 float h = model.StrainAt(rest, t);
                 Color tint = h >= 0f ? new Color(1f, 0.76f, 0.32f) : new Color(0.3f, 0.78f, 1f);
                 Color line = Color.Lerp(new Color(0.18f, 0.5f, 0.72f), tint, pulse);
-                line.a = (0.13f + pulse * 0.75f) * fade;
+                line.a = (0.16f + pulse * 0.8f) * fade;
                 _colors[i] = line;
                 _particles[i].position = point;
                 _particles[i].startSize = pointSize * (0.8f + pulse * 1.8f) * fade;
                 _particles[i].startColor = new Color(tint.r, tint.g, tint.b,
-                    (0.5f + pulse * 0.5f) * fade);
+                    (0.55f + pulse * 0.45f) * fade);
                 _particles[i].remainingLifetime = 100000f;
             }
             _mesh.vertices = _positions;

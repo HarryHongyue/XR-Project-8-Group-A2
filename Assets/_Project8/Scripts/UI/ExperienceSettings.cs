@@ -7,6 +7,7 @@ namespace Project8.UI
     public class ExperienceSettings : MonoBehaviour
     {
         public static bool IsChinese { get; private set; }
+        public static bool HasChosen { get; private set; }
         public Text selectionText;
         public Text chineseButtonText;
         public Button enterButton;
@@ -24,6 +25,7 @@ namespace Project8.UI
         void Choose(bool chinese)
         {
             IsChinese = chinese;
+            HasChosen = true;
             if (selectionText != null)
             {
                 selectionText.text = chinese ? "已选择中文。准备进入飞船。" : "English selected. Ready to board.";

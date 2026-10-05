@@ -47,6 +47,23 @@ namespace Project8.Visualization
             _com = transform.position;
             _tilt = Quaternion.Euler(orbitTiltDeg, 0f, 0f);
             if (mergedHole != null) mergedHole.gameObject.SetActive(false);
+            if (simulation != null) simulation.onSimulationReset.AddListener(ResetBinary);
+        }
+
+        void OnDestroy()
+        {
+            if (simulation != null) simulation.onSimulationReset.RemoveListener(ResetBinary);
+        }
+
+        /// <summary>Replay/reset support: restore the two holes so the merger can re-run.</summary>
+        void ResetBinary()
+        {
+            HasMerged = false;
+            _angleDeg = 0f;
+            if (blackHoleA != null) blackHoleA.gameObject.SetActive(true);
+            if (blackHoleB != null) blackHoleB.gameObject.SetActive(true);
+            if (mergedHole != null) mergedHole.gameObject.SetActive(false);
+            if (mergerFlash != null) mergerFlash.intensity = 0f;
         }
 
         void Update()
