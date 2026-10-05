@@ -18,13 +18,14 @@ and what is only a *viewing* choice. Source: project Starter Pack
 
 | Choice | Where labelled | Why it exists |
 |---|---|---|
-| Visualization speed ~1.5 m/s | control-panel disclaimer, floating label, tutor entry | real GWs travel at c; slowed so a human can follow |
+| Visualization speed ~2.2 m/s | floating control-panel disclaimer and tutor entry | real GWs travel at c; slowed so a human can follow |
 | Displayed strain ~0.1-1.0 | amplitude slider says "exaggerated"; tutor entry | real strain is ~1e-21; LIGO public-viz practice of exaggerating for visibility |
 | displacementExaggeration multiplier | parameter asset header | extra visibility margin on top of displayed strain |
 | Ride-with-the-wave frame | perspective button + tutor entry | pedagogical viewpoint; **not** a relativistic observer transformation |
-| Marker rings ahead/behind the front | in-scene ring labels | scaffolding for "which mass moves next" reasoning |
+| Marker rings ahead/behind the front | control-panel legend | scaffolding for "which mass moves next" reasoning |
 | Strain colouring (orange/blue) | panel legend | stretch vs squeeze sign cue |
 | Audio hum tied to abs(h) | - | attention guidance; no physical meaning |
+| Ship-centred lattice and black-hole wells | cockpit teaching display | finite 3D volume follows the ship; visual potential wells curve its test-mass links near the binary; neither depicts a literal curved-spacetime embedding nor solves Einstein's equations |
 
 ## Scope control (per brief)
 

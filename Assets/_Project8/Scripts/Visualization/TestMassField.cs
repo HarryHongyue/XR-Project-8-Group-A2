@@ -11,7 +11,7 @@ namespace Project8.Visualization
     /// </summary>
     public class TestMassField : MonoBehaviour
     {
-        public enum FieldLayout { Ring, Grid }
+        public enum FieldLayout { Ring, Grid, Volume }
 
         [Header("References")]
         public GravitationalWaveModel model;
@@ -27,6 +27,8 @@ namespace Project8.Visualization
         [Tooltip("Grid side length (gridSize x gridSize masses).")]
         [Range(3, 15)] public int gridSize = 7;
         [Min(0.1f)] public float gridSpacing = 0.4f;
+        [Range(2, 10)] public int depthCount = 5;
+        [Min(0.2f)] public float depthSpacing = 2f;
 
         [Header("Strain colouring")]
         public bool colorizeByStrain = true;
@@ -34,6 +36,7 @@ namespace Project8.Visualization
         public Color squeezeColor = new Color(0.15f, 0.65f, 1f);
 
         readonly List<TestMass> _masses = new List<TestMass>();
+        PropagationAxis _axis;
         public IReadOnlyList<TestMass> Masses => _masses;
 
         void Start()
@@ -53,20 +56,21 @@ namespace Project8.Visualization
         {
             // Propagation axis may have changed -> rest positions must be re-laid out
             // in the new transverse plane.
-            Rebuild();
+            if (model.parameters.propagationAxis != _axis) Rebuild();
         }
 
         /// <summary>(Re)spawns all test masses in the current transverse plane.</summary>
         public void Rebuild()
         {
-            for (int i = transform.childCount - 1; i >= 0; i--)
+            foreach (var mass in _masses)
             {
-                var child = transform.GetChild(i);
-                if (Application.isPlaying) Destroy(child.gameObject);
-                else DestroyImmediate(child.gameObject);
+                if (mass == null) continue;
+                if (Application.isPlaying) Destroy(mass.gameObject);
+                else DestroyImmediate(mass.gameObject);
             }
             _masses.Clear();
             if (testMassPrefab == null || model == null) return;
+            _axis = model.parameters.propagationAxis;
 
             model.GetTransverseAxes(out Vector3 u1, out Vector3 u2);
             // transverse axes are world-space; convert into field-local directions
@@ -85,9 +89,13 @@ namespace Project8.Visualization
             else
             {
                 float half = (gridSize - 1) * 0.5f * gridSpacing;
+                int layers = layout == FieldLayout.Volume ? depthCount : 1;
+                Vector3 depth = transform.InverseTransformDirection(model.PropagationDirection);
+                for (int iz = 0; iz < layers; iz++)
                 for (int ix = 0; ix < gridSize; ix++)
                 for (int iy = 0; iy < gridSize; iy++)
-                    SpawnMass(l1 * (ix * gridSpacing - half) + l2 * (iy * gridSpacing - half));
+                    SpawnMass(l1 * (ix * gridSpacing - half) + l2 * (iy * gridSpacing - half) +
+                        depth * ((iz - (layers - 1) * 0.5f) * depthSpacing));
             }
         }
 

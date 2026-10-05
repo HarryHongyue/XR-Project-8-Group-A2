@@ -83,31 +83,48 @@ namespace Project8.UI
             if (amplitudeSlider != null) amplitudeSlider.value = parameters.strainAmplitude;
             if (frequencySlider != null) frequencySlider.value = parameters.frequencyHz;
             if (amplitudeValueText != null)
-                amplitudeValueText.text = $"h0 = {parameters.strainAmplitude:F2} (exaggerated)";
+            {
+                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(amplitudeValueText);
+                amplitudeValueText.text = ExperienceSettings.IsChinese
+                    ? $"h0 = {parameters.strainAmplitude:F2}（夸张显示）"
+                    : $"h0 = {parameters.strainAmplitude:F2} (exaggerated)";
+            }
             if (frequencyValueText != null)
                 frequencyValueText.text = $"f = {parameters.frequencyHz:F2} Hz";
             if (exaggerationSlider != null)
                 exaggerationSlider.value = parameters.displacementExaggeration;
             if (exaggerationValueText != null)
-                exaggerationValueText.text =
-                    parameters.displacementExaggeration <= 0.01f
-                        ? "real scale (invisible)"
-                        : $"x{parameters.displacementExaggeration:F2} exaggerated";
+            {
+                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(exaggerationValueText);
+                exaggerationValueText.text = ExperienceSettings.IsChinese
+                    ? parameters.displacementExaggeration <= 0.01f
+                        ? "实际尺度（不可见）" : $"x{parameters.displacementExaggeration:F2} 夸张"
+                    : parameters.displacementExaggeration <= 0.01f
+                        ? "real scale (invisible)" : $"x{parameters.displacementExaggeration:F2} exaggerated";
+            }
             _refreshing = false;
         }
 
         void Update()
         {
+            bool chinese = ExperienceSettings.IsChinese;
             if (playPauseButtonText != null)
-                playPauseButtonText.text = simulation.IsPlaying ? "Pause" : "Play";
+                playPauseButtonText.text = simulation.IsPlaying
+                    ? (chinese ? "暂停" : "Pause") : (chinese ? "播放" : "Play");
             if (perspectiveButtonText != null)
                 perspectiveButtonText.text = perspective.Mode == PerspectiveMode.Observer
-                    ? "Ride with the wave" : "Return to observer";
+                    ? (chinese ? "跟随引力波" : "Ride with the wave")
+                    : (chinese ? "返回观察位置" : "Return to observer");
             if (statusText != null)
-                statusText.text =
-                    $"t = {simulation.SimulationTime:F1} s   |   " +
-                    $"{(simulation.IsPlaying ? "playing" : "paused")} at {simulation.TimeScale:F2}x   |   " +
-                    $"view: {(perspective.Mode == PerspectiveMode.Observer ? "observer" : "riding the wave (visualization frame)")}";
+            {
+                if (chinese) LocalizedText.UseChineseFont(statusText);
+                statusText.text = chinese
+                    ? $"时间 {simulation.SimulationTime:F1} 秒  |  {(simulation.IsPlaying ? "播放中" : "已暂停")} " +
+                      $"{simulation.TimeScale:F2} 倍速  |  {(perspective.Mode == PerspectiveMode.Observer ? "观察" : "跟随波前")}"
+                    : $"t = {simulation.SimulationTime:F1} s   |   " +
+                      $"{(simulation.IsPlaying ? "playing" : "paused")} at {simulation.TimeScale:F2}x   |   " +
+                      $"view: {(perspective.Mode == PerspectiveMode.Observer ? "observer" : "riding the wave (visualization frame)")}";
+            }
         }
     }
 }

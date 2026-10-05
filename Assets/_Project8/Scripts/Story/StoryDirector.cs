@@ -3,6 +3,8 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using Project8.Core;
 using Project8.Visualization;
+using Project8.Interaction;
+using Project8.UI;
 
 namespace Project8.Story
 {
@@ -21,6 +23,7 @@ namespace Project8.Story
         public GravitationalWaveModel model;
         public Transform ship;
         public Transform earth;
+        public CockpitControls cockpit;
 
         [Header("UI wiring")]
         public Text narrationText;
@@ -38,6 +41,7 @@ namespace Project8.Story
 
         enum Phase { Waiting, Flying, Explaining, Waves, RidingToEarth, Done }
         Phase _phase = Phase.Waiting;
+        public bool CanPilot => _phase == Phase.Waiting || _phase == Phase.Explaining || _phase == Phase.Done;
         Vector3 _flyFrom;
         float _flyT;
         float _earthHitS;
@@ -49,18 +53,27 @@ namespace Project8.Story
             _earthHitS = SOf(earth != null ? earth.position : Vector3.back * 20f) - 7f;
             Narrate("AI: Welcome aboard. Dead ahead a pair of black holes is about to merge. " +
                     "Their collision will send ripples through spacetime itself - gravitational waves. " +
-                    "Press START MISSION when you are ready.");
+                    "Press START MISSION when you are ready.",
+                    "AI：欢迎登上飞船。前方的双黑洞即将合并，碰撞会释放引力波。准备好后点击「开始任务」。");
             SetButtons(true, false, false);
         }
 
         float SOf(Vector3 p) => Vector3.Dot(p - model.Origin, model.PropagationDirection);
+
+        public void Advance()
+        {
+            if (_phase == Phase.Waiting) StartMission();
+            else if (_phase == Phase.Explaining) ContinueMission();
+            else if (_phase == Phase.Done) GoToWaveLab();
+        }
 
         public void StartMission()
         {
             _flyFrom = ship.position;
             _flyT = 0f;
             _phase = Phase.Flying;
-            Narrate("AI: Hold on - we are flying closer to the binary.");
+            Narrate("AI: Hold on - we are flying closer to the binary.",
+                    "AI：坐稳，飞船正在接近双黑洞。");
             SetButtons(false, false, false);
         }
 
@@ -70,7 +83,8 @@ namespace Project8.Story
             continueButton.gameObject.SetActive(false);
             simulation.Play();
             Narrate("AI: Watch them fall toward each other. The flash marks the merger - " +
-                    "the wave burst is on its way.");
+                    "the wave burst is on its way.",
+                    "AI：观察它们加速靠近。闪光代表合并，随后引力波向外传播。");
         }
 
         public void GoToWaveLab()
@@ -89,9 +103,11 @@ namespace Project8.Story
                     if (_flyT >= 1f)
                     {
                         _phase = Phase.Explaining;
+                        if (cockpit != null) cockpit.OpenMission();
                         Narrate("AI: These two black holes orbit a shared centre of mass. " +
                                 "As they spiral inward their orbit speeds up - the strain they " +
-                                "emit sweeps upward like a chirp. Press CONTINUE to release the simulation.");
+                                "emit sweeps upward like a chirp. Press CONTINUE to release the simulation.",
+                                "AI：两个黑洞绕共同质心旋转。越靠近，转得越快；波的振幅与频率也会上升。点击「继续」。");
                         SetButtons(false, true, false);
                     }
                     break;
@@ -105,7 +121,8 @@ namespace Project8.Story
                         model.GetTransverseAxes(out Vector3 u1, out _);
                         _rideOffset = u1 * rideLateralOffset;
                         Narrate("AI: The wavefront is passing us - we are surfing it toward Earth. " +
-                                "Look at the net: space itself is stretching and squeezing.");
+                                "Look at the net: space itself is stretching and squeezing.",
+                                "AI：波前正穿过飞船。我们跟随被刻意放慢的可视化波形驶向地球；留意小球间的伸缩。");
                     }
                     break;
                 }
@@ -121,9 +138,11 @@ namespace Project8.Story
                     if (s >= _earthHitS)
                     {
                         _phase = Phase.Done;
+                        if (cockpit != null) cockpit.OpenMission();
                         Narrate("AI: The wave just reached Earth - and stretched it, too. " +
                                 "Real GWs do this at strain ~1e-21: invisible, so we exaggerated it. " +
-                                "Now it is your turn - enter the WAVE LAB.");
+                                "Now it is your turn - enter the WAVE LAB.",
+                                "AI：波到达地球。真实应变约为 10⁻²¹，肉眼无法看见，这里有意夸张。接下来进入波形实验室。");
                         SetButtons(false, false, true);
                     }
                     break;
@@ -131,9 +150,11 @@ namespace Project8.Story
             }
         }
 
-        void Narrate(string line)
+        void Narrate(string english, string chinese)
         {
-            if (narrationText != null) narrationText.text = line;
+            if (narrationText == null) return;
+            if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(narrationText);
+            narrationText.text = ExperienceSettings.IsChinese ? chinese : english;
         }
 
         void SetButtons(bool start, bool cont, bool lab)

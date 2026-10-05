@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Project8.Core;
+using Project8.UI;
 
 namespace Project8.Evaluation
 {
@@ -77,9 +78,14 @@ namespace Project8.Evaluation
             for (int i = 0; i < slotTexts.Length; i++)
             {
                 if (slotTexts[i] == null) continue;
+                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(slotTexts[i]);
                 slotTexts[i].text = i < _waves.Count
-                    ? $"{_waves[i].name}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
-                    : $"Wave {i + 1}  (empty - click to save current)";
+                    ? ExperienceSettings.IsChinese
+                        ? $"波形 {i + 1}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
+                        : $"{_waves[i].name}  h0={_waves[i].amplitude:0.00}  f={_waves[i].frequencyHz:0.00}"
+                    : ExperienceSettings.IsChinese
+                        ? $"波形 {i + 1}（空槽：点击保存）"
+                        : $"Wave {i + 1}  (empty - click to save current)";
             }
         }
 
