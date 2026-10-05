@@ -653,14 +653,14 @@ namespace Project8.EditorTools
                 panel = BuildControlPanel(controller, model, parameters, perspective, task,
                     ship.transform, new Vector3(0.12f, 1.44f, 1.14f), eye);
                 cockpit.controlPanel = panel.gameObject;
-                cockpit.story = BuildMissionPanel(ship.transform, eye, controller, model, earth.transform);
+                cockpit.story = BuildMissionPanel(ship.transform, eye, controller, model, earth.transform, tutor);
                 cockpit.secondaryPanel = cockpit.story.narrationText.GetComponentInParent<Canvas>().gameObject;
             }
             else
             {
                 // Wave Lab uses ONE merged panel: transport + sliders + wave library.
                 panel = BuildWaveLabPanel(ship.transform, eye, controller, model,
-                    parameters, perspective, task);
+                    parameters, perspective, task, tutor);
                 cockpit.controlPanel = panel.gameObject;
                 cockpit.secondaryPanel = panel.gameObject;
                 BuildInterferometer(mats, model, controller, new Vector3(3.4f, 1.35f, 5f));
@@ -822,7 +822,7 @@ namespace Project8.EditorTools
 
         // ------------------------------------------------------------- mission panel (story)
         static StoryDirector BuildMissionPanel(Transform ship, Vector3 eye, SimulationController sim,
-                                      GravitationalWaveModel model, Transform earth)
+                                      GravitationalWaveModel model, Transform earth, AITutor tutor)
         {
             var dirGO = new GameObject("StoryDirector");
             var director = dirGO.AddComponent<StoryDirector>();
@@ -870,6 +870,15 @@ namespace Project8.EditorTools
             director.labButton.gameObject.SetActive(false);
             MissionButton(rt, "Btn_SkipLab", "WAVE LAB  ->", new Vector2(295f, -198f), 210f,
                 director.GoToWaveLab);
+
+            // ask Rick: question input wired to the real LLM/local backend
+            var chat = canvasGO.AddComponent<TutorChatUI>();
+            chat.tutor = tutor;
+            chat.answerText = director.narrationText;
+            chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-140f, -112f),
+                400f, "Ask Rick a question...");
+            MakeButton(rt, "Btn_Ask", "ASK RICK", new Vector2(230f, -112f), 190f, chat.Ask);
+            UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
             return director;
         }
 
@@ -883,7 +892,8 @@ namespace Project8.EditorTools
         // -------------------------------------------------- wave lab panel (merged controls)
         static SimulationUI BuildWaveLabPanel(Transform ship, Vector3 eye, SimulationController sim,
                                       GravitationalWaveModel model, SimulationParameters parameters,
-                                      PerspectiveController perspective, PredictionTask task)
+                                      PerspectiveController perspective, PredictionTask task,
+                                      AITutor tutor)
         {
             var libGO = new GameObject("WaveLibrary");
             var lib = libGO.AddComponent<WaveLibrary>();
@@ -897,7 +907,7 @@ namespace Project8.EditorTools
             AddComponentByNames(canvasGO,
                 "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
             var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(950f, 920f);
+            rt.sizeDelta = new Vector2(950f, 980f);
             canvasGO.transform.SetParent(ship, true);
             canvasGO.transform.localPosition = new Vector3(0.12f, 1.44f, 1.14f);
             canvasGO.transform.localScale = Vector3.one * 0.00115f;
@@ -986,15 +996,26 @@ namespace Project8.EditorTools
             MakeText(rt, "IfNote",
                 "the red L-frame by the ship is a LIGO-style interferometer - watch its laser arms",
                 13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(1f, 0.55f, 0.55f),
-                new Vector2(0f, -300f), new Vector2(860f, 34f));
+                new Vector2(0f, -290f), new Vector2(860f, 30f));
+
+            // ask Rick: question input wired to the real LLM/local backend
+            var chat = canvasGO.AddComponent<TutorChatUI>();
+            chat.tutor = tutor;
+            chat.answerText = MakeText(rt, "TutorAnswer", "", 15, FontStyle.Normal,
+                TextAnchor.MiddleLeft, new Color(0.85f, 0.92f, 1f),
+                new Vector2(0f, -395f), new Vector2(880f, 44f));
+            chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-190f, -340f),
+                380f, "Ask Rick a question...");
+            MakeButton(rt, "Btn_Ask", "ASK RICK", new Vector2(140f, -340f), 190f, chat.Ask);
+            UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
 
             ui.statusText = MakeText(rt, "Status", "", 15, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
-                new Vector2(0f, -360f), new Vector2(920f, 30f));
+                new Vector2(0f, -448f), new Vector2(920f, 26f));
             MakeText(rt, "Legend",
                 "orange tint = stretch   |   blue tint = squeeze   |   yellow ring = wavefront   |   green/red = ahead/behind",
                 13, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.65f, 0.65f, 0.72f),
-                new Vector2(0f, -420f), new Vector2(920f, 24f));
+                new Vector2(0f, -476f), new Vector2(920f, 20f));
             return ui;
         }
 
@@ -1761,6 +1782,7 @@ namespace Project8.EditorTools
                 case "Reset": return "重置";
                 case "Ride with the wave": return "跟随引力波";
                 case "Predict next mass": return "预测下一个小球";
+                case "ASK RICK": return "提问 RICK";
                 case "strain amplitude h0": return "应变振幅 h0";
                 case "frequency f (Hz)": return "频率 f（赫兹）";
                 case "WAVE LAB  -  shape it, save it, replay it on Earth": return "波形实验室  -  调整、保存、回放";
@@ -1803,6 +1825,7 @@ namespace Project8.EditorTools
                 case "Reset": return "Resetten";
                 case "Ride with the wave": return "Surfen op de golf";
                 case "Predict next mass": return "Voorspel volgende massa";
+                case "ASK RICK": return "VRAAG AAN RICK";
                 case "strain amplitude h0": return "rek-amplitude h0";
                 case "frequency f (Hz)": return "frequentie f (Hz)";
                 case "WAVE LAB  -  shape it, save it, replay it on Earth":
@@ -1877,6 +1900,47 @@ namespace Project8.EditorTools
                 Color.white, Vector2.zero, rt.sizeDelta);
             Stretch((RectTransform)text.transform);
             return text;
+        }
+
+        static InputField MakeInput(Transform parent, string name, Vector2 pos, float width,
+                                    string hint)
+        {
+            var rt = NewUIObject(name, parent);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = new Vector2(width, 42f);
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = _uiSprite;
+            img.type = Image.Type.Sliced;
+            img.color = new Color(0.06f, 0.08f, 0.14f, 0.95f);
+            var field = rt.gameObject.AddComponent<InputField>();
+
+            var textRt = NewUIObject("Text", rt);
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.offsetMin = new Vector2(12f, 4f);
+            textRt.offsetMax = new Vector2(-12f, -4f);
+            var text = textRt.gameObject.AddComponent<Text>();
+            text.font = _font;
+            text.fontSize = 15;
+            text.color = Color.white;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.supportRichText = false;
+            field.textComponent = text;
+
+            var phRt = NewUIObject("Placeholder", rt);
+            phRt.anchorMin = Vector2.zero;
+            phRt.anchorMax = Vector2.one;
+            phRt.offsetMin = new Vector2(12f, 4f);
+            phRt.offsetMax = new Vector2(-12f, -4f);
+            var ph = phRt.gameObject.AddComponent<Text>();
+            ph.font = _font;
+            ph.fontSize = 15;
+            ph.fontStyle = FontStyle.Italic;
+            ph.color = new Color(0.6f, 0.62f, 0.7f, 0.7f);
+            ph.alignment = TextAnchor.MiddleLeft;
+            ph.text = hint;
+            field.placeholder = ph;
+            return field;
         }
 
         static Slider MakeSlider(Transform parent, string name, Vector2 pos, float width,
