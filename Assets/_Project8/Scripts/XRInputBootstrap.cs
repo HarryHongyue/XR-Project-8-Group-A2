@@ -17,7 +17,8 @@ namespace Project8
         void Awake()
         {
             if (actions == null) return;
-            InputSystem.actions = actions;
+            // InputSystem.actions may only be assigned in edit mode; at runtime the
+            // asset itself is enabled directly, which activates every map it contains.
             actions.Enable();
         }
 

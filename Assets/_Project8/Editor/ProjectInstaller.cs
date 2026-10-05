@@ -66,22 +66,31 @@ namespace Project8.EditorTools
             AddNext();
         }
 
+        /// <summary>
+        /// Import just the XRI samples (Starter Assets + XR Device Simulator).
+        /// Synchronous file copy - safe in -batchmode where async Client.Add stalls.
+        /// </summary>
+        [MenuItem("Project 8/Import Samples Only")]
+        public static void ImportSamples()
+        {
+            ImportStarterAssets();
+            Debug.Log("[Project8] Sample import pass finished.");
+        }
+
         static void ImportStarterAssets()
         {
             try
             {
                 var samples = Sample.FindByPackage("com.unity.xr.interaction.toolkit", null);
-                var starter = samples.FirstOrDefault(s =>
-                    s.displayName.IndexOf("Starter", StringComparison.OrdinalIgnoreCase) >= 0);
-                if (!string.IsNullOrEmpty(starter.displayName))
+                foreach (var s in samples)
                 {
-                    starter.Import(Sample.ImportOptions.OverridePreviousImports);
+                    bool wanted =
+                        s.displayName.IndexOf("Starter", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        s.displayName.IndexOf("Device Simulator", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (!wanted) continue;
+                    s.Import(Sample.ImportOptions.OverridePreviousImports);
                     AssetDatabase.Refresh();
-                    Debug.Log($"[Project8] Imported sample: {starter.displayName}");
-                }
-                else
-                {
-                    Debug.LogWarning("[Project8] 'Starter Assets' sample not found in XRI package.");
+                    Debug.Log($"[Project8] Imported sample: {s.displayName}");
                 }
             }
             catch (Exception e)

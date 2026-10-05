@@ -14,6 +14,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Project8.AI.TutorKnowledgeBase
   entries:
   - keywords:
+    - black hole
+    - binary
+    - merger
+    - chirp
+    - inspiral
+    - orbit
+    answer: 'The two dark spheres with glowing orange accretion discs are a black-hole binary. They orbit faster and faster as they spiral inward, then merge - the flash marks coalescence, when the emitted strain peaks: a ''chirp'' signal that sweeps upward in frequency and amplitude, like GW150914.'
+  - keywords:
+    - net
+    - lattice
+    - web
+    - lines
+    - grid
+    answer: The web of spheres in front of the ship is a lattice of test masses. As the wavefront sweeps through it you can see the links stretch and squeeze alternately - that is how a detector 'sees' a gravitational wave.
+  - keywords:
     - strain
     - delta l
     - relative change

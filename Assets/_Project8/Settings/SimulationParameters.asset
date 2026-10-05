@@ -12,11 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3d341d18571fed843b3d83bc7fec5551, type: 3}
   m_Name: SimulationParameters
   m_EditorClassIdentifier: Assembly-CSharp::Project8.Core.SimulationParameters
-  strainAmplitude: 0.35
-  frequencyHz: 0.5
+  strainAmplitude: 0.5
+  frequencyHz: 0.9
   phaseRadians: 0
-  propagationAxis: 4
-  waveMode: 1
+  propagationAxis: 5
+  waveMode: 2
   packetDurationSeconds: 4
-  visualizationSpeedMps: 1.5
+  inspiralDurationSeconds: 8
+  ringdownSeconds: 2.5
+  visualizationSpeedMps: 2.2
   displacementExaggeration: 1

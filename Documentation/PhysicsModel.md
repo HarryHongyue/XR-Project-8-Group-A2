@@ -31,3 +31,13 @@ and what is only a *viewing* choice. Source: project Starter Pack
 Not modelled: field equations, tensor calculus, numerical relativity, detector
 sensitivity, astrophysical waveforms, curved-spacetime ray tracing, relativistic
 observer transformations. The ride mode is never described as a literal physical journey.
+
+
+## Chirp mode (v2 spaceship scene)
+
+The spaceship scene uses WaveMode.Chirp: a qualitative binary-inspiral waveform.
+Instantaneous frequency sweeps from 0.25 x f_peak up to frequencyHz over
+inspiralDurationSeconds while amplitude grows with the square root of progress,
+followed by an exponential ringdown of time constant ringdownSeconds. This mirrors
+the GW150914-like chirp shape that the binary black-hole visual shows orbiting and
+merging. It is still a teaching approximation, not a numerical-relativity template.

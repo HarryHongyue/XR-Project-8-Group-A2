@@ -19,6 +19,9 @@ namespace Project8.Perspective
     {
         [Header("References")]
         public Transform xrRigRoot;
+        [Tooltip("Optional vehicle root (e.g. the spaceship). When set, the vehicle - with the " +
+                 "rig seated inside - moves in ride mode instead of the bare rig.")]
+        public Transform moveTarget;
         public GravitationalWaveModel model;
         public SimulationController simulation;
 
@@ -37,12 +40,15 @@ namespace Project8.Perspective
         Quaternion _observerRot;
         float _blend; // 0 = observer, 1 = riding
 
+        Transform MoveRoot() => moveTarget != null ? moveTarget : xrRigRoot;
+
         void Start()
         {
-            if (xrRigRoot != null)
+            var root = MoveRoot();
+            if (root != null)
             {
-                _observerPos = xrRigRoot.position;
-                _observerRot = xrRigRoot.rotation;
+                _observerPos = root.position;
+                _observerRot = root.rotation;
             }
         }
 
@@ -54,18 +60,19 @@ namespace Project8.Perspective
         {
             if (Mode == mode) return;
             Mode = mode;
-            if (mode == PerspectiveMode.RideTheWave && xrRigRoot != null)
+            if (mode == PerspectiveMode.RideTheWave && MoveRoot() != null)
             {
                 // store the observer frame so "compare" can return exactly to it
-                _observerPos = xrRigRoot.position;
-                _observerRot = xrRigRoot.rotation;
+                _observerPos = MoveRoot().position;
+                _observerRot = MoveRoot().rotation;
             }
             onModeChanged.Invoke(mode);
         }
 
         void Update()
         {
-            if (xrRigRoot == null) return;
+            var root = MoveRoot();
+            if (root == null) return;
 
             float target = Mode == PerspectiveMode.RideTheWave ? 1f : 0f;
             _blend = Mathf.MoveTowards(_blend, target, Time.deltaTime / transitionSeconds);
@@ -73,8 +80,8 @@ namespace Project8.Perspective
 
             Vector3 ridePos = ComputeRidePosition();
             float k = Mathf.SmoothStep(0f, 1f, _blend);
-            xrRigRoot.position = Vector3.Lerp(_observerPos, ridePos, k);
-            xrRigRoot.rotation = Quaternion.Slerp(_observerRot, _observerRot, k); // yaw locked
+            root.position = Vector3.Lerp(_observerPos, ridePos, k);
+            root.rotation = Quaternion.Slerp(_observerRot, _observerRot, k); // yaw locked
         }
 
         Vector3 ComputeRidePosition()

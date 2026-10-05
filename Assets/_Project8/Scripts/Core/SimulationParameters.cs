@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Project8.Core
 {
-    public enum WaveMode { Continuous, Burst }
+    public enum WaveMode { Continuous, Burst, Chirp }
     public enum PropagationAxis { PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ }
 
     /// <summary>
@@ -33,6 +33,13 @@ namespace Project8.Core
 
         [Tooltip("Length of the Gaussian wave packet in Burst mode, in seconds of simulation time.")]
         [Min(0.5f)] public float packetDurationSeconds = 4f;
+
+        [Tooltip("Chirp mode: seconds of inspiral before the merger peak. In this mode " +
+                 "frequencyHz acts as the peak frequency; the sweep starts at 0.25x it.")]
+        [Min(0.5f)] public float inspiralDurationSeconds = 8f;
+
+        [Tooltip("Chirp mode: exponential ringdown decay time after the merger peak, in seconds.")]
+        [Min(0.2f)] public float ringdownSeconds = 3f;
 
         [Header("Visualization choices (explicitly NOT physical)")]
         [Tooltip("Displayed propagation speed in m/s. Real gravitational waves travel at the speed " +

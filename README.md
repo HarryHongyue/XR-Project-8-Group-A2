@@ -4,6 +4,17 @@ Interactive XR **Digital Twin** research prototype (Unity 6000.6.3f1, OpenXR) th
 user observe a simplified gravitational wave from different spatial perspectives -
 including a deliberately slowed *ride-with-the-wave* mode.
 
+## Scene overview (v2)
+
+You sit in a glass-canopy spaceship pod facing a binary black hole system. The two
+holes orbit, spiral inward and merge with a flash; the emitted gravitational wave -
+a chirp waveform rising in frequency and amplitude - then sweeps through a lattice
+net of test masses floating between the ship and the binary, visibly stretching and
+squeezing the links. Controls live on the ship dashboard; a grabbable handle on the
+left console wing changes strain amplitude. Ride-with-the-wave moves the whole ship
+alongside the passing wavefront. The XR Device Simulator prefab drives the head and
+controllers with keyboard and mouse inside the Editor.
+
 ## Project brief
 
 From "Project Requirements and Details/XR_DT_ET_Project_8.pdf" (Track A - Digital Twins &

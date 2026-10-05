@@ -27,6 +27,8 @@ namespace Project8.UI
         public Text perspectiveButtonText;
         public Slider amplitudeSlider;
         public Slider frequencySlider;
+        public Slider exaggerationSlider;
+        public Text exaggerationValueText;
 
         bool _refreshing; // guard against slider feedback loops
 
@@ -66,6 +68,14 @@ namespace Project8.UI
             Evaluation.ResearchLogger.Instance?.LogEvent("Parameter", $"frequencyHz={v:F2}");
         }
 
+        public void SetExaggeration(float v)
+        {
+            if (_refreshing) return;
+            parameters.displacementExaggeration = v;
+            parameters.NotifyChanged();
+            Evaluation.ResearchLogger.Instance?.LogEvent("Parameter", $"exaggeration={v:F2}");
+        }
+
         // --- Widget refresh ----------------------------------------------------
         public void RefreshWidgets()
         {
@@ -76,6 +86,13 @@ namespace Project8.UI
                 amplitudeValueText.text = $"h0 = {parameters.strainAmplitude:F2} (exaggerated)";
             if (frequencyValueText != null)
                 frequencyValueText.text = $"f = {parameters.frequencyHz:F2} Hz";
+            if (exaggerationSlider != null)
+                exaggerationSlider.value = parameters.displacementExaggeration;
+            if (exaggerationValueText != null)
+                exaggerationValueText.text =
+                    parameters.displacementExaggeration <= 0.01f
+                        ? "real scale (invisible)"
+                        : $"x{parameters.displacementExaggeration:F2} exaggerated";
             _refreshing = false;
         }
 

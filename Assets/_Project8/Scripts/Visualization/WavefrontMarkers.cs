@@ -35,7 +35,7 @@ namespace Project8.Visualization
             Vector3 d = model.PropagationDirection;
             Vector3 o = model.Origin;
             model.GetTransverseAxes(out _, out Vector3 up);
-            var rot = Quaternion.LookRotation(d, up);
+            var rot = Quaternion.LookRotation(-d, up); // label side faces the downstream viewer
             _markerRotation = rot;
 
             Place(wavefrontMarker, o + d * s, s);

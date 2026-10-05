@@ -52,8 +52,16 @@ namespace Project8.Core
             float tau = simTime - s / v;
             if (tau < 0f) return 0f; // wavefront has not reached this position yet
 
-            float h = parameters.strainAmplitude *
-                      Mathf.Sin(2f * Mathf.PI * parameters.frequencyHz * tau + parameters.phaseRadians);
+            float h;
+            if (parameters.waveMode == WaveMode.Chirp)
+            {
+                h = ChirpStrain(tau);
+            }
+            else
+            {
+                h = parameters.strainAmplitude *
+                    Mathf.Sin(2f * Mathf.PI * parameters.frequencyHz * tau + parameters.phaseRadians);
+            }
 
             if (parameters.waveMode == WaveMode.Burst)
             {
@@ -65,6 +73,37 @@ namespace Project8.Core
                 h *= Mathf.Exp(-(dTau * dTau) / (2f * sigma * sigma));
             }
             return h;
+        }
+
+        /// <summary>
+        /// Simplified binary-inspiral waveform: frequency sweeps upward from 0.25*f1 to f1
+        /// over the inspiral time while amplitude grows, then an exponential ringdown.
+        /// A qualitative "GW150914-shaped" chirp for teaching - not a numerical-relativity output.
+        /// </summary>
+        float ChirpStrain(float tau)
+        {
+            var p = parameters;
+            float td = Mathf.Max(p.inspiralDurationSeconds, 1e-3f);
+            float f1 = p.frequencyHz;
+            float f0 = f1 * 0.25f;
+
+            if (tau <= td)
+            {
+                float x = tau / td;
+                // phase is the integral of instantaneous frequency: phi = 2*pi*Int f dt
+                float phase = 2f * Mathf.PI * (f0 * tau + (f1 - f0) * tau * tau / (2f * td))
+                              + p.phaseRadians;
+                float amp = p.strainAmplitude * (0.15f + 0.85f * Mathf.Sqrt(Mathf.Max(x, 0f)));
+                return amp * Mathf.Sin(phase);
+            }
+            else
+            {
+                float tr = tau - td;
+                float phaseAtMerger = 2f * Mathf.PI * (f0 * td + (f1 - f0) * td * 0.5f)
+                                      + p.phaseRadians;
+                float amp = p.strainAmplitude * Mathf.Exp(-tr / p.ringdownSeconds);
+                return amp * Mathf.Sin(phaseAtMerger + 2f * Mathf.PI * f1 * tr);
+            }
         }
 
         /// <summary>
