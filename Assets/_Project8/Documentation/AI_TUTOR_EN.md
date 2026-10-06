@@ -56,7 +56,7 @@ Content-Type: application/json
 Authorization: Bearer {apiKey}          // or "api-key: {key}" for Azure
 
 {
-  "model": "meta/llama-3.1-8b-instruct",
+  "model": "openai/gpt-oss-120b",
   "messages": [
     { "role": "system", "content": "You are a physics tutor inside a VR lesson..." },
     { "role": "user",   "content": "what is a gravitational wave?" }
@@ -112,7 +112,7 @@ knowledge base.
 
 3. In `Main.unity`, select the **AITutor** GameObject and set:
    - `endpoint` = `https://integrate.api.nvidia.com/v1/chat/completions`
-   - `model` = `meta/llama-3.1-8b-instruct` (or any model on the NIM catalog)
+   - `model` = `openai/gpt-oss-120b` (or any model on the NIM catalog)
    - `useRemoteBackend` = ✔
    - `azureStyleAuth` = ✘ (NVIDIA uses Bearer auth)
 

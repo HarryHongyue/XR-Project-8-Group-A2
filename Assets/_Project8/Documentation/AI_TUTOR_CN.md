@@ -53,7 +53,7 @@ Content-Type: application/json
 Authorization: Bearer {apiKey}          // Azure 则用 "api-key: {key}"
 
 {
-  "model": "meta/llama-3.1-8b-instruct",
+  "model": "openai/gpt-oss-120b",
   "messages": [
     { "role": "system", "content": "You are a physics tutor inside a VR lesson..." },
     { "role": "user",   "content": "what is a gravitational wave?" }
@@ -107,7 +107,7 @@ string key = System.Environment.GetEnvironmentVariable(apiKeyEnvironmentVariable
 
 3. 在 `Main.unity` 里选中 **AITutor** 对象，Inspector 里改三个字段：
    - `endpoint` = `https://integrate.api.nvidia.com/v1/chat/completions`
-   - `model` = `meta/llama-3.1-8b-instruct`（或 NIM 目录里任意模型）
+   - `model` = `openai/gpt-oss-120b`（或 NIM 目录里任意模型）
    - `useRemoteBackend` = ✔
    - `azureStyleAuth` = ✘（NVIDIA 用 Bearer 认证，**不要勾**）
 
