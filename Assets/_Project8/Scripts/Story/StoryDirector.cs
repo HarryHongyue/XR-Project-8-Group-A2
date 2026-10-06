@@ -2,22 +2,27 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using Project8.Core;
-using Project8.Visualization;
 using Project8.Interaction;
 using Project8.UI;
 
 namespace Project8.Story
 {
     /// <summary>
-    /// Drives the storyboard sequence of the Story scene:
-    ///   1. spawn in the ship + intro (simulation paused, waits for START)
-    ///   2. ship flies toward the binary, holes start spinning when sim resumes
-    ///   3. pause + AI explanation, user presses CONTINUE
-    ///   4. merger chirp - wave sweeps past the net
-    ///   5. ship rides along the wavefront toward Earth
-    ///   6. wave reaches Earth - exaggerated deformation
-    ///   7. ship approaches Earth, narrator explains LIGO/laser interferometry
-    ///   8. RESTART MISSION replays the whole sequence from scratch
+    /// Drives the storyboard sequence of the Main scene. The whole mission keeps ONE
+    /// fixed heading: the ship always faces the binary-Earth line at 90 degrees, and
+    /// only ever translates along the wave axis (pure lateral motion).
+    ///
+    ///   1. Waiting        - parked side-on, narration, START MISSION
+    ///   2. WatchingMerger - simulation released; ship stays parked while the holes
+    ///                       inspiral and merge on screen
+    ///   3. Riding         - once the burst is on its way the ship follows the
+    ///                       wavefront laterally, slightly behind it, heading locked
+    ///   4. SlidingEarth   - short lateral slide into the Earth observation spot
+    ///   5. EarthPause     - parked beside Earth; CONTINUE button; the narration
+    ///                       invites the user to play with the wave controls first
+    ///   6. RidingLigo     - lateral cruise to the interferometer behind Earth
+    ///   7. SlidingLigo    - slide into the detector observation spot
+    ///   8. Done           - LIGO explanation + RESTART MISSION
     /// </summary>
     public class StoryDirector : MonoBehaviour
     {
@@ -28,7 +33,7 @@ namespace Project8.Story
         public Transform binary;
         public Transform ligo;
         public CockpitControls cockpit;
-        public Project8.UI.RickVoice voice;
+        public RickVoice voice;
 
         [Header("UI wiring")]
         public Text narrationText;
@@ -37,72 +42,90 @@ namespace Project8.Story
         public Button restartButton;
 
         [Header("Choreography")]
-        public Vector3 flyTarget = new Vector3(-16f, 1.5f, 4f);
-        public float flySeconds = 7f;
         public float rideLagBehindWavefront = 2.5f;
-        public float rideLateralOffset = 3f;
-        public float rideLiftY = 3.2f;
+        public float rideBlendSpeed = 2f;
+        public float slideBlendSpeed = 1.2f;
         public Vector3 earthWatchOffset = new Vector3(0f, 3f, -18f);
-        public Vector3 ligoWatchOffset = new Vector3(0f, 2f, -10f);
+        public Vector3 ligoWatchOffset = new Vector3(0f, 2.5f, -12f);
 
-        enum Phase { Waiting, Flying, Explaining, Waves, RidingToEarth,
-                     ApproachingEarth, ObservingEarth, RidingToLigo, ApproachingLigo, Done }
+        enum Phase { Waiting, WatchingMerger, Riding, SlidingEarth, EarthPause,
+                     RidingLigo, SlidingLigo, Done }
         Phase _phase = Phase.Waiting;
-        public bool CanPilot => _phase == Phase.Waiting || _phase == Phase.Explaining || _phase == Phase.Done;
-        Vector3 _flyFrom;
-        float _flyT;
-        float _earthHitS;
-        float _ligoHitS;
+        public bool CanPilot => _phase == Phase.Waiting || _phase == Phase.EarthPause ||
+                                _phase == Phase.Done;
+
+        float _earthHitS, _ligoHitS;
         Vector3 _rideOffset;
 
         void Start()
         {
             simulation.Pause();
-            _earthHitS = SOf(earth != null ? earth.position : Vector3.back * 20f) - 7f;
-            _ligoHitS = SOf(ligo != null ? ligo.position : Vector3.forward * 30f) - 10f;
-            Narrate("Rick: Welcome aboard. Dead ahead a pair of black holes is about to merge. " +
-                    "Their collision will send ripples through spacetime itself - gravitational waves. " +
-                    "Press START MISSION when you are ready.",
-                    "Rick：欢迎登上飞船。前方的双黑洞即将合并，碰撞会释放引力波。准备好后点击「开始任务」。",
-                    "Rick: Welkom aan boord. Recht voor ons staan twee zwarte gaten op het punt " +
-                    "samem te smelten. De botsing stuurt rimpelingen door de ruimtetijd zelf - " +
-                    "zwaartekrachtgolven. Druk op MISSIE STARTEN als je er klaar voor bent.");
+
+            // The heading is set ONCE and never changed again: face the binary-Earth
+            // line at exactly 90 degrees. All later motion is lateral translation only.
+            Vector3 dir = model.PropagationDirection;
+            Vector3 toLine = binary.position - ship.position;
+            toLine -= dir * Vector3.Dot(toLine, dir);
+            toLine.y = 0f;
+            if (toLine.sqrMagnitude > 0.01f)
+                ship.rotation = Quaternion.LookRotation(toLine.normalized, Vector3.up);
+
+            _earthHitS = SOf(earth != null ? earth.position : Vector3.zero) - 7f;
+            _ligoHitS = SOf(ligo != null ? ligo.position : Vector3.zero) - 10f;
+            // Constant lateral offset from the wave axis: riding only changes the
+            // along-axis coordinate, so the ship moves in one straight line.
+            _rideOffset = ship.position - AxisPoint(SOf(ship.position));
+
+            Narrate("Rick: Welcome aboard. Dead ahead - seen side-on - a pair of black holes " +
+                    "is about to merge. Their collision will send ripples through spacetime " +
+                    "itself: gravitational waves. Press START MISSION when you are ready.",
+                    "Rick：欢迎登上飞船。正侧面方向上，一对黑洞即将合并，碰撞会在时空中激起引力波。准备好后点击「开始任务」。",
+                    "Rick: Welkom aan boord. Recht voor ons - van opzij gezien - staan twee " +
+                    "zwarte gaten op het punt samen te smelten. De botsing stuurt rimpelingen " +
+                    "door de ruimtetijd: zwaartekrachtgolven. Druk op MISSIE STARTEN.");
             SetButtons(true, false, false);
         }
 
         float SOf(Vector3 p) => Vector3.Dot(p - model.Origin, model.PropagationDirection);
+        Vector3 AxisPoint(float s) => model.Origin + model.PropagationDirection * s;
 
         public void Advance()
         {
             if (_phase == Phase.Waiting) StartMission();
-            else if (_phase == Phase.Explaining) ContinueMission();
+            else if (_phase == Phase.EarthPause) ContinueMission();
             else if (_phase == Phase.Done) RestartMission();
         }
 
+        /// <summary>START: release the simulation. The ship does not move - it watches
+        /// the whole inspiral and merger from its parked 90-degree vantage point.</summary>
         public void StartMission()
         {
-            _flyFrom = ship.position;
-            _flyT = 0f;
-            _phase = Phase.Flying;
-            Narrate("Rick: Hold on - we are flying closer to the binary.",
-                    "Rick：坐稳，飞船正在接近双黑洞。",
-                    "Rick: Hou je vast - we vliegen dichter naar het dubbele systeem.");
+            _phase = Phase.WatchingMerger;
+            simulation.Play();
+            Narrate("Rick: Simulation released. Stay put - watch them spiral inward, faster " +
+                    "and faster, until they collide. We only move once the wave is born.",
+                    "Rick：模拟已启动。飞船保持不动——观察它们越转越快直到碰撞。引力波产生之后我们才会动身。",
+                    "Rick: Simulatie vrijgegeven. Blijf staan - zie ze sneller en sneller " +
+                    "naar elkaar spiraliseren tot ze botsen. We bewegen pas als de golf er is.");
             SetButtons(false, false, false);
         }
 
+        /// <summary>CONTINUE at the Earth stop: leave Earth and ride on to the
+        /// interferometer parked further down the wave line.</summary>
         public void ContinueMission()
         {
-            _phase = Phase.Waves;
-            continueButton.gameObject.SetActive(false);
-            simulation.Play();
-            Narrate("Rick: Watch them fall toward each other. The flash marks the merger - " +
-                    "the wave burst is on its way.",
-                    "Rick：观察它们加速靠近。闪光代表合并，随后引力波向外传播。",
-                    "Rick: Kijk hoe ze naar elkaar toe vallen. De flits markeert de samensmelting - " +
-                    "de golf komt eraan.");
+            if (_phase != Phase.EarthPause) return;
+            _phase = Phase.RidingLigo;
+            _rideOffset = ship.position - AxisPoint(SOf(ship.position));
+            Narrate("Rick: Onward - the wave does not stop at Earth. It rolls on toward a " +
+                    "laser detector further down the line.",
+                    "Rick：继续前进——波不会在地球停下，它继续向前，前往下游的一台激光探测器。",
+                    "Rick: Verder - de golf stopt niet bij de Aarde. Ze rolt door naar een " +
+                    "laserdetector verderop.");
+            SetButtons(false, false, false);
         }
 
-        /// <summary>Reload the story scene: binary restored, simulation back to t = 0.</summary>
+        /// <summary>Reload the scene: binary restored, simulation back to t = 0.</summary>
         public void RestartMission()
         {
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);
@@ -110,148 +133,102 @@ namespace Project8.Story
 
         void Update()
         {
+            float s = model.WavefrontDistance(simulation.SimulationTime);
             switch (_phase)
             {
-                case Phase.Flying:
-                    _flyT += Time.deltaTime / flySeconds;
-                    float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_flyT));
-                    ship.position = Vector3.Lerp(_flyFrom, flyTarget, k);
-                    if (binary != null)
-                    {
-                        Vector3 face = binary.position - ship.position;
-                        face.y = 0f;
-                        if (face.sqrMagnitude > 0.01f)
-                            ship.rotation = Quaternion.Slerp(ship.rotation,
-                                Quaternion.LookRotation(face.normalized, Vector3.up),
-                                Time.deltaTime * 1.4f);
-                    }
-                    if (_flyT >= 1f)
-                    {
-                        _phase = Phase.Explaining;
-                        if (cockpit != null) cockpit.OpenMission();
-                        Narrate("Rick: These two black holes orbit a shared centre of mass. " +
-                                "As they spiral inward their orbit speeds up - the strain they " +
-                                "emit sweeps upward like a chirp. Press CONTINUE to release the simulation.",
-                                "Rick：两个黑洞绕共同质心旋转。越靠近，转得越快；波的振幅与频率也会上升。点击「继续」。",
-                                "Rick: Deze twee zwarte gaten draaien om een gemeenschappelijk " +
-                                "zwaartepunt. Terwijl ze naar binnen spiraliseren versnelt hun baan - " +
-                                "de frequentie van de golven stijgt als een 'chirp'. Druk op DOORGAAN " +
-                                "om de simulatie vrij te geven.");
-                        SetButtons(false, true, false);
-                    }
-                    break;
-
-                case Phase.Waves:
+                case Phase.WatchingMerger:
                 {
-                    float s = model.WavefrontDistance(simulation.SimulationTime);
-                    // Watch the whole merger from the side first: only once the holes
-                    // have coalesced and the burst is visibly on its way does the
-                    // ship leave its vantage point.
+                    // Ship stays parked. Only after the holes have coalesced AND the
+                    // burst front has visibly left the binary do we start moving.
                     bool merged = simulation.SimulationTime >= model.parameters.inspiralDurationSeconds;
                     if (merged && s >= SOf(ship.position) + 3f)
                     {
-                        _phase = Phase.RidingToEarth;
-                        model.GetTransverseAxes(out Vector3 u1, out _);
-                        _rideOffset = u1 * rideLateralOffset;
-                        Narrate("Rick: The wavefront is passing us - we are surfing it toward Earth. " +
-                                "Look at the net: space itself is stretching and squeezing.",
-                                "Rick：波前正穿过飞船。我们跟随被刻意放慢的可视化波形驶向地球；留意小球间的伸缩。",
-                                "Rick: Het golffront passeert ons - we surfen erop richting de Aarde. " +
-                                "Kijk naar het net: de ruimte zelf rekt uit en drukt samen.");
+                        _phase = Phase.Riding;
+                        Narrate("Rick: The wave is out - and we move with it. We trail just " +
+                                "behind the wavefront so you can watch space stretch and " +
+                                "squeeze all the way to Earth.",
+                                "Rick：引力波已经产生——我们开始跟随。飞船始终比波前慢一点点，" +
+                                "你能一路看着空间拉伸挤压直到地球。",
+                                "Rick: De golf is er - en we bewegen mee. We blijven net " +
+                                "achter het golffront zodat je de ruimte de hele weg naar " +
+                                "de Aarde ziet uitrekken en samendrukken.");
                     }
                     break;
                 }
 
-                case Phase.RidingToEarth:
-                case Phase.RidingToLigo:
+                case Phase.Riding:
+                case Phase.RidingLigo:
                 {
-                    // Pure lateral cruise slightly behind the wavefront: position only
-                    // moves along the propagation axis, heading stays perpendicular
-                    // so the wave sweeps left-to-right across the window.
-                    float s = model.WavefrontDistance(simulation.SimulationTime);
-                    float lagged = Mathf.Max(s - rideLagBehindWavefront, 0f);
-                    Vector3 target = model.Origin + model.PropagationDirection * lagged + _rideOffset;
-                    target.y = Mathf.Lerp(ship.position.y, rideLiftY, Time.deltaTime * 0.8f);
-                    ship.position = Vector3.Lerp(ship.position, target, Time.deltaTime * 2f);
-                    Vector3 flat = Vector3.Cross(model.PropagationDirection, Vector3.up).normalized;
-                    ship.rotation = Quaternion.Slerp(ship.rotation,
-                        Quaternion.LookRotation(flat, Vector3.up), Time.deltaTime * 0.9f);
-
-                    if (_phase == Phase.RidingToEarth && s >= _earthHitS)
+                    RideBehindWavefront(s);
+                    if (_phase == Phase.Riding && s >= _earthHitS)
                     {
-                        _phase = Phase.ApproachingEarth;
-                        Narrate("Rick: The wave just reached Earth - and stretched it, too. " +
-                                "We are approaching for a side-on look at the whole planet.",
-                                "Rick：波刚刚抵达地球并拉伸了它。我们飞到侧面去看完整的地球。",
-                                "Rick: De golf heeft de Aarde net bereikt - en ook uitgerekt. " +
-                                "We vliegen er zijdelings heen voor een volledig zicht.");
+                        _phase = Phase.SlidingEarth;
+                        Narrate("Rick: The wave just reached Earth. Sliding into a side-on " +
+                                "view of the whole planet.",
+                                "Rick：波刚刚抵达地球。飞船横向滑入能看全地球的侧面观察位。",
+                                "Rick: De golf heeft de Aarde bereikt. We schuiven zijwaarts " +
+                                "naar een volledig zijaanzicht van de planeet.");
                     }
-                    else if (_phase == Phase.RidingToLigo && s >= _ligoHitS)
+                    else if (_phase == Phase.RidingLigo && s >= _ligoHitS)
                     {
-                        _phase = Phase.ApproachingLigo;
-                        Narrate("Rick: Past Earth the wave keeps travelling - and reaches a " +
-                                "laser interferometer. Let us watch its arms deform.",
-                                "Rick：波穿过地球后继续传播，抵达一台激光干涉仪。我们去看看它的激光臂如何形变。",
-                                "Rick: Voorbij de Aarde reist de golf verder - en bereikt een " +
-                                "laserinterferometer. Laten we haar armen zien vervormen.");
+                        _phase = Phase.SlidingLigo;
+                        Narrate("Rick: Past Earth the wave reaches a laser interferometer. " +
+                                "Parking beside it.",
+                                "Rick：波穿过地球后抵达激光干涉仪。飞船正停到它旁边。",
+                                "Rick: Voorbij de Aarde bereikt de golf een " +
+                                "laserinterferometer. We parkeren ernaast.");
                     }
                     break;
                 }
 
-                case Phase.ApproachingEarth:
+                case Phase.SlidingEarth:
                 {
-                    if (earth == null) { _phase = Phase.Done; break; }
-                    if (FlySideOn(earth.position, earthWatchOffset))
+                    if (earth == null) { _phase = Phase.EarthPause; break; }
+                    if (SlideTo(earth.position + earthWatchOffset))
                     {
-                        _phase = Phase.ObservingEarth;
-                        Narrate("Rick: We are parked 90 degrees off the wave path - the whole " +
-                                "planet is in view. Watch the lattice dip under Earth and the " +
-                                "wave squeeze through it.",
-                                "Rick：我们停在波传播路径的侧面 90 度位置，能看到完整的地球。注意地球压弯网格，以及波穿过时的挤压。",
-                                "Rick: We staan 90 graden zijwaarts van het golfpad - de hele " +
-                                "planeet is zichtbaar. Kijk hoe het raster onder de Aarde " +
-                                "inbuigt en hoe de golf erdoorheen perst.");
+                        _phase = Phase.EarthPause;
+                        if (cockpit != null) cockpit.OpenMission();
+                        Narrate("Rick: Parked 90 degrees off the wave path - the whole planet " +
+                                "is in view. Try the CONTROLS panel: change the amplitude, " +
+                                "frequency or exaggeration and watch how the wave through " +
+                                "Earth responds. Press CONTINUE when you want to fly on to " +
+                                "the laser detector.",
+                                "Rick：已停在波路径侧面 90 度位置，地球全貌可见。现在可以打开「控制台」面板：" +
+                                "调整振幅、频率或夸张度，观察穿过地球的波如何变化。玩好了点「继续」，前往激光探测器。",
+                                "Rick: Geparkeerd op 90 graden van het golfpad - de hele planeet " +
+                                "is zichtbaar. Probeer het BESTURING-paneel: verander amplitude, " +
+                                "frequentie of overdrijving en kijk hoe de golf door de Aarde " +
+                                "reageert. Druk op DOORGAAN om naar de laserdetector te vliegen.");
+                        SetButtons(false, true, false);
                     }
                     break;
                 }
 
-                case Phase.ObservingEarth:
-                {
-                    // Dwell until the wave has fully swept past Earth, then follow it.
-                    float s = model.WavefrontDistance(simulation.SimulationTime);
-                    if (s >= _earthHitS + 14f)
-                    {
-                        _phase = Phase.RidingToLigo;
-                        Narrate("Rick: Onward - the wave does not stop at Earth. It rolls on " +
-                                "toward a laser detector further down the line.",
-                                "Rick：继续前进——波不会在地球停下，它继续向前，前往下游的一台激光探测器。",
-                                "Rick: Verder - de golf stopt niet bij de Aarde. Ze rolt door " +
-                                "naar een laserdetector verderop.");
-                    }
-                    break;
-                }
-
-                case Phase.ApproachingLigo:
+                case Phase.SlidingLigo:
                 {
                     if (ligo == null) { FinishMission(); break; }
-                    if (FlySideOn(ligo.position, ligoWatchOffset))
+                    if (SlideTo(ligo.position + ligoWatchOffset))
                         FinishMission();
                     break;
                 }
             }
         }
 
-        /// <summary>Fly to a spot offset from target while turning to face it. True when parked.</summary>
-        bool FlySideOn(Vector3 targetPos, Vector3 offset)
+        /// <summary>Pure lateral translation along the wave axis, a fixed distance
+        /// behind the wavefront. Rotation is never touched - heading stays at 90
+        /// degrees to the wave line for the entire mission.</summary>
+        void RideBehindWavefront(float s)
         {
-            Vector3 spot = targetPos + offset;
-            ship.position = Vector3.Lerp(ship.position, spot, Time.deltaTime * 0.9f);
-            Vector3 look = targetPos - ship.position;
-            if (look.sqrMagnitude > 0.01f)
-                ship.rotation = Quaternion.Slerp(ship.rotation,
-                    Quaternion.LookRotation(look.normalized, Vector3.up),
-                    Time.deltaTime * 1.2f);
-            return (ship.position - spot).sqrMagnitude < 0.6f;
+            float lagged = Mathf.Max(s - rideLagBehindWavefront, 0f);
+            Vector3 target = AxisPoint(lagged) + _rideOffset;
+            ship.position = Vector3.Lerp(ship.position, target, Time.deltaTime * rideBlendSpeed);
+        }
+
+        /// <summary>Position-only glide to a spot. Heading never changes.</summary>
+        bool SlideTo(Vector3 spot)
+        {
+            ship.position = Vector3.Lerp(ship.position, spot, Time.deltaTime * slideBlendSpeed);
+            return (ship.position - spot).sqrMagnitude < 0.5f;
         }
 
         void FinishMission()

@@ -37,6 +37,33 @@ namespace Project8.EditorTools
         static Sprite _uiSprite;
         static Sprite _knobSprite;
 
+        // ---- glass / neumorphic UI palette ------------------------------------
+        static readonly Color PanelGlass  = new Color(0.07f, 0.10f, 0.16f, 0.58f);
+        static readonly Color Accent      = new Color(0.45f, 0.85f, 0.95f);
+        static readonly Color ButtonFill  = new Color(0.13f, 0.28f, 0.40f, 0.78f);
+        static readonly Color ButtonHover = new Color(0.28f, 0.55f, 0.72f);
+        static readonly Color ButtonDown  = new Color(0.45f, 0.80f, 0.95f);
+        static readonly Color WellFill    = new Color(0.05f, 0.08f, 0.13f, 0.82f);
+
+        /// <summary>Glass look for a panel background: translucent dark fill, a soft
+        /// drop shadow and a thin accent strip along the top edge.</summary>
+        static void StylePanel(Image bg)
+        {
+            bg.color = PanelGlass;
+            var shadow = bg.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
+            shadow.effectDistance = new Vector2(0f, -10f);
+            var strip = NewUIObject("TopAccent", bg.transform);
+            strip.anchorMin = new Vector2(0f, 1f);
+            strip.anchorMax = new Vector2(1f, 1f);
+            strip.pivot = new Vector2(0.5f, 1f);
+            strip.sizeDelta = new Vector2(0f, 4f);
+            strip.anchoredPosition = Vector2.zero;
+            var stripImg = strip.gameObject.AddComponent<Image>();
+            stripImg.raycastTarget = false;
+            stripImg.color = new Color(Accent.r, Accent.g, Accent.b, 0.85f);
+        }
+
         [MenuItem("Project 8/Build Demo Scene")]
         public static void BuildAll()
         {
@@ -455,7 +482,8 @@ namespace Project8.EditorTools
             Stretch(bg);
             var img = bg.gameObject.AddComponent<Image>();
             img.sprite = _uiSprite;
-            img.color = new Color(0.03f, 0.05f, 0.11f, 0.82f);
+            img.type = Image.Type.Sliced;
+            StylePanel(img);
             var settings = panel.AddComponent<ExperienceSettings>();
             MakeText(rt, "WelcomeTitle", "SURFING A GRAVITATIONAL WAVE", 32, FontStyle.Bold,
                 TextAnchor.MiddleCenter, Color.white, new Vector2(0f, 235f), new Vector2(920f, 50f));
@@ -592,6 +620,10 @@ namespace Project8.EditorTools
 
             // --- spaceship + seated rig -----------------------------------------
             var ship = BuildSpaceship(mats, hum);
+            // Spawn already parked at the 90-degree vantage: south of the
+            // binary-Earth line, facing +Z straight at it. No approach flight -
+            // the mission starts with the binary dead ahead.
+            ship.transform.position = new Vector3(-16f, 1.5f, 4f);
             volume.ship = ship.transform;
             var rig = InstantiateXRRig();
             rig.transform.SetParent(ship.transform, false);
@@ -640,19 +672,23 @@ namespace Project8.EditorTools
             // Everything (transport, sliders, wave slots, interferometer hint, Rick Q&A)
             // lives in the single ControlPanel; the Mission panel sits beside it on the
             // left rail. Both tabs stay available for the whole experience.
-            var panel = BuildControlPanel(ship.transform, eye, controller, model,
+            // Panels face the eye in WORLD space - the ship no longer sits at the origin.
+            Vector3 eyeWorld = ship.transform.TransformPoint(eye);
+            var panel = BuildControlPanel(ship.transform, eyeWorld, controller, model,
                 parameters, perspective, task, tutor, voice);
             cockpit.controlPanel = panel.gameObject;
             // The LIGO model sits far beyond Earth on the wave line - the last stop
             // of the mission is watching its laser arms deform.
             var ligo = BuildInterferometer(mats, model, controller, new Vector3(72f, 0.8f, 22f));
             ligo.localScale = Vector3.one * 1.6f;
-            cockpit.story = BuildMissionPanel(ship.transform, eye, controller, model,
+            cockpit.story = BuildMissionPanel(ship.transform, eyeWorld, controller, model,
                 earth.transform, binary.transform, ligo, tutor, voice);
             cockpit.secondaryPanel = cockpit.story.narrationText.GetComponentInParent<Canvas>().gameObject;
 
             task.ui = panel;
-            cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eye);
+            cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eyeWorld);
+            // Rick's chat bubble is always-on and independent of the drawers.
+            BuildChatBubble(ship.transform, eyeWorld, tutor, voice);
             panel.gameObject.SetActive(false);
             cockpit.secondaryPanel.SetActive(false);
 
@@ -790,11 +826,63 @@ namespace Project8.EditorTools
             rt.localPosition = new Vector3(-0.72f, 1.43f, 0.98f);
             rt.localScale = Vector3.one * 0.00115f;
             rt.rotation = Quaternion.LookRotation((rt.position - eye).normalized, Vector3.up);
+            var railBg = NewUIObject("Background", rt);
+            Stretch(railBg);
+            var railImg = railBg.gameObject.AddComponent<Image>();
+            railImg.sprite = _uiSprite;
+            railImg.type = Image.Type.Sliced;
+            railImg.raycastTarget = false;
+            StylePanel(railImg);
             MakeButton(rt, "Btn_Secondary", "MISSION  <",
                 new Vector2(0f, 48f), 235f, cockpit.ShowMission);
             MakeButton(rt, "Btn_Controls", "CONTROLS  <",
                 new Vector2(0f, -32f), 235f, cockpit.ShowControls);
             return go;
+        }
+
+        // ------------------------------------------- floating Rick chat bubble
+        /// <summary>The AI tutor is a small always-on chat bubble in the lower-right
+        /// of the canopy - separated from the Mission/Controls drawers so scripted
+        /// narration stays readable and the chat never covers the view.</summary>
+        static void BuildChatBubble(Transform ship, Vector3 eye, AITutor tutor,
+                                    Project8.UI.RickVoice voice)
+        {
+            var canvasGO = new GameObject("ChatBubble");
+            var canvas = canvasGO.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvasGO.AddComponent<GraphicRaycaster>();
+            AddComponentByNames(canvasGO,
+                "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
+            var rt = (RectTransform)canvasGO.transform;
+            rt.sizeDelta = new Vector2(470f, 330f);
+            canvasGO.transform.SetParent(ship, true);
+            canvasGO.transform.localPosition = new Vector3(0.60f, 0.86f, 1.02f);
+            canvasGO.transform.localScale = Vector3.one * 0.00105f;
+            canvasGO.transform.rotation =
+                Quaternion.LookRotation((canvasGO.transform.position - eye).normalized, Vector3.up);
+
+            var bg = NewUIObject("Background", rt);
+            Stretch(bg);
+            var bgImg = bg.gameObject.AddComponent<Image>();
+            bgImg.sprite = _uiSprite;
+            bgImg.type = Image.Type.Sliced;
+            StylePanel(bgImg);
+
+            MakeText(rt, "Title", "RICK", 15, FontStyle.Bold, TextAnchor.MiddleLeft,
+                Accent, new Vector2(-140f, 135f), new Vector2(200f, 26f));
+            MakeText(rt, "Hint", "AI tutor", 13, FontStyle.Italic, TextAnchor.MiddleLeft,
+                new Color(0.7f, 0.75f, 0.85f, 0.9f), new Vector2(10f, 135f), new Vector2(280f, 26f));
+
+            var chat = canvasGO.AddComponent<TutorChatUI>();
+            chat.tutor = tutor;
+            chat.voice = voice;
+            chat.answerText = MakeText(rt, "Answer", "", 14, FontStyle.Normal,
+                TextAnchor.UpperLeft, new Color(0.85f, 0.92f, 1f),
+                new Vector2(0f, 25f), new Vector2(430f, 200f));
+            chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-75f, -128f),
+                290f, "Ask Rick a question...");
+            MakeButton(rt, "Btn_Ask", "ASK", new Vector2(160f, -128f), 100f, chat.Ask);
+            UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
         }
 
         // ------------------------------------------------------------- mission panel (story)
@@ -812,9 +900,6 @@ namespace Project8.EditorTools
             director.ligo = ligo;
             director.voice = voice;
             director.cockpit = ship.GetComponent<CockpitControls>();
-            // Vantage point 90 degrees off the binary-Earth line: the wave axis is
-            // horizontal across the window for the whole mission.
-            director.flyTarget = new Vector3(-16f, 1.5f, 4f);
 
             var canvasGO = new GameObject("MissionPanel");
             var canvas = canvasGO.AddComponent<Canvas>();
@@ -834,11 +919,11 @@ namespace Project8.EditorTools
             Stretch(bg);
             var bgImg = bg.gameObject.AddComponent<Image>();
             bgImg.sprite = _uiSprite;
-            bgImg.color = new Color(0.03f, 0.05f, 0.10f, 0.78f);
             bgImg.type = Image.Type.Sliced;
+            StylePanel(bgImg);
 
             MakeText(rt, "Title", "MISSION", 25, FontStyle.Bold, TextAnchor.MiddleLeft,
-                new Color(0.9f, 0.7f, 0.3f), new Vector2(-300f, 180f), new Vector2(300f, 40f));
+                Accent, new Vector2(-300f, 180f), new Vector2(300f, 40f));
             director.narrationText = MakeText(rt, "Narration", "", 20, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.9f, 0.94f, 1f),
                 new Vector2(0f, 25f), new Vector2(810f, 230f));
@@ -851,16 +936,6 @@ namespace Project8.EditorTools
                 new Vector2(0f, -165f), 300f, director.RestartMission);
             director.continueButton.gameObject.SetActive(false);
             director.restartButton.gameObject.SetActive(false);
-
-            // ask Rick: question input wired to the real LLM/local backend
-            var chat = canvasGO.AddComponent<TutorChatUI>();
-            chat.tutor = tutor;
-            chat.voice = voice;
-            chat.answerText = director.narrationText;
-            chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-140f, -112f),
-                400f, "Ask Rick a question...");
-            MakeButton(rt, "Btn_Ask", "ASK RICK", new Vector2(230f, -112f), 190f, chat.Ask);
-            UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
             return director;
         }
 
@@ -900,8 +975,8 @@ namespace Project8.EditorTools
             Stretch(bg);
             var bgImg = bg.gameObject.AddComponent<Image>();
             bgImg.sprite = _uiSprite;
-            bgImg.color = new Color(0.03f, 0.05f, 0.10f, 0.78f);
             bgImg.type = Image.Type.Sliced;
+            StylePanel(bgImg);
 
             var ui = canvasGO.AddComponent<SimulationUI>();
             ui.simulation = sim;
@@ -912,7 +987,7 @@ namespace Project8.EditorTools
             MakeButton(rt, "Btn_CloseControls", "CLOSE  X",
                 new Vector2(370f, 420f), 140f, ship.GetComponent<CockpitControls>().TogglePanel);
             MakeText(rt, "Title", "CONTROL PANEL  -  shape the wave, save it, replay it",
-                22, FontStyle.Bold, TextAnchor.MiddleLeft, new Color(0.9f, 0.7f, 0.3f),
+                22, FontStyle.Bold, TextAnchor.MiddleLeft, Accent,
                 new Vector2(-30f, 415f), new Vector2(800f, 40f));
 
             // transport row
@@ -979,18 +1054,6 @@ namespace Project8.EditorTools
                 "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it",
                 13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(1f, 0.55f, 0.55f),
                 new Vector2(0f, -290f), new Vector2(860f, 30f));
-
-            // ask Rick: question input wired to the real LLM/local backend
-            var chat = canvasGO.AddComponent<TutorChatUI>();
-            chat.tutor = tutor;
-            chat.voice = voice;
-            chat.answerText = MakeText(rt, "TutorAnswer", "", 15, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.85f, 0.92f, 1f),
-                new Vector2(0f, -395f), new Vector2(880f, 44f));
-            chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-190f, -340f),
-                380f, "Ask Rick a question...");
-            MakeButton(rt, "Btn_Ask", "ASK RICK", new Vector2(140f, -340f), 190f, chat.Ask);
-            UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
 
             ui.statusText = MakeText(rt, "Status", "", 15, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
@@ -1726,12 +1789,15 @@ namespace Project8.EditorTools
             var img = rt.gameObject.AddComponent<Image>();
             img.sprite = _uiSprite;
             img.type = Image.Type.Sliced;
-            img.color = new Color(0.18f, 0.32f, 0.55f, 0.95f);
+            img.color = ButtonFill;
+            var bShadow = rt.gameObject.AddComponent<Shadow>();
+            bShadow.effectColor = new Color(0f, 0f, 0f, 0.4f);
+            bShadow.effectDistance = new Vector2(0f, -4f);
             var btn = rt.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
             var colors = btn.colors;
-            colors.highlightedColor = new Color(0.35f, 0.55f, 0.85f);
-            colors.pressedColor = new Color(0.6f, 0.75f, 1f);
+            colors.highlightedColor = ButtonHover;
+            colors.pressedColor = ButtonDown;
             btn.colors = colors;
             if (onClick != null) UnityEventTools.AddPersistentListener(btn.onClick, onClick);
 
@@ -1750,7 +1816,10 @@ namespace Project8.EditorTools
             var img = rt.gameObject.AddComponent<Image>();
             img.sprite = _uiSprite;
             img.type = Image.Type.Sliced;
-            img.color = new Color(0.06f, 0.08f, 0.14f, 0.95f);
+            img.color = WellFill;
+            var iShadow = rt.gameObject.AddComponent<Shadow>();
+            iShadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
+            iShadow.effectDistance = new Vector2(0f, -3f);
             var field = rt.gameObject.AddComponent<InputField>();
 
             var textRt = NewUIObject("Text", rt);
@@ -1806,7 +1875,7 @@ namespace Project8.EditorTools
             var bgImg = bg.gameObject.AddComponent<Image>();
             bgImg.sprite = _uiSprite;
             bgImg.type = Image.Type.Sliced;
-            bgImg.color = new Color(0.1f, 0.12f, 0.18f, 1f);
+            bgImg.color = WellFill;
 
             var fillArea = NewUIObject("Fill Area", rt);
             Stretch(fillArea);
@@ -1815,7 +1884,7 @@ namespace Project8.EditorTools
             var fillImg = fill.gameObject.AddComponent<Image>();
             fillImg.sprite = _uiSprite;
             fillImg.type = Image.Type.Sliced;
-            fillImg.color = new Color(0.3f, 0.6f, 0.9f, 1f);
+            fillImg.color = new Color(Accent.r, Accent.g, Accent.b, 0.9f);
             slider.fillRect = fill;
 
             var handleArea = NewUIObject("Handle Slide Area", rt);
@@ -1824,7 +1893,7 @@ namespace Project8.EditorTools
             handle.sizeDelta = new Vector2(34f, 40f);
             var handleImg = handle.gameObject.AddComponent<Image>();
             handleImg.sprite = _knobSprite != null ? _knobSprite : _uiSprite;
-            handleImg.color = Color.white;
+            handleImg.color = Accent;
             slider.handleRect = handle;
             slider.targetGraphic = handleImg;
 
