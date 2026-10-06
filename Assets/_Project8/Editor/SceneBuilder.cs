@@ -531,6 +531,11 @@ namespace Project8.EditorTools
             var tutorGO = new GameObject("AITutor");
             var tutor = tutorGO.AddComponent<AITutor>();
             tutor.knowledgeBase = knowledge;
+            // NVIDIA NIM free tier (key read from env var OPENAI_API_KEY at runtime;
+            // falls back to the local knowledge base when no key/server is available).
+            tutor.endpoint = "https://integrate.api.nvidia.com/v1/chat/completions";
+            tutor.model = "meta/llama-3.1-8b-instruct";
+            tutor.apiKeyEnvironmentVariable = "OPENAI_API_KEY";
             var voice = tutorGO.AddComponent<Project8.UI.RickVoice>();
 
             // --- binary ---------------------------------------------------------
