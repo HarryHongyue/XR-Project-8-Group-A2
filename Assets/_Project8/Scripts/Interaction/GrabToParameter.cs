@@ -25,6 +25,15 @@ namespace Project8.Interaction
         {
             if (parameters == null || restAnchor == null) return;
             float dy = transform.position.y - restAnchor.position.y;
+            // Only drive the parameter while the handle is actually displaced.
+            // Otherwise an idle handle would keep snapping strainAmplitude back to
+            // the value captured at OnEnable - which is what made the amplitude
+            // slider spring back whenever the user dragged it.
+            if (Mathf.Abs(dy) < 0.005f)
+            {
+                _base = parameters.strainAmplitude;
+                return;
+            }
             float value = Mathf.Clamp01(_base + dy * metresToAmplitude);
             if (!Mathf.Approximately(value, parameters.strainAmplitude))
             {

@@ -990,78 +990,93 @@ namespace Project8.EditorTools
                 22, FontStyle.Bold, TextAnchor.MiddleLeft, Accent,
                 new Vector2(-30f, 415f), new Vector2(800f, 40f));
 
-            // transport row
+            // ---- TRANSPORT -----------------------------------------------------
+            MakeText(rt, "SecTransport", "TRANSPORT", 14, FontStyle.Bold,
+                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
+                new Vector2(-30f, 385f), new Vector2(800f, 24f));
             ui.playPauseButtonText = MakeButton(rt, "Btn_PlayPause", "Pause",
-                new Vector2(-330f, 335f), 150f, ui.OnPlayPause);
-            MakeButton(rt, "Btn_Slow", "0.25x", new Vector2(-160f, 335f), 110f, ui.OnSpeedQuarter);
-            MakeButton(rt, "Btn_Normal", "1x", new Vector2(-30f, 335f), 90f, ui.OnSpeedNormal);
-            MakeButton(rt, "Btn_Replay", "Replay", new Vector2(90f, 335f), 110f, ui.OnReplay);
-            MakeButton(rt, "Btn_Reset", "Reset", new Vector2(220f, 335f), 100f, ui.OnReset);
-            ui.perspectiveButtonText = MakeButton(rt, "Btn_Ride", "Ride with the wave",
-                new Vector2(-160f, 270f), 260f, ui.OnTogglePerspective);
-            MakeButton(rt, "Btn_Predict", "Predict next mass",
-                new Vector2(130f, 270f), 220f, task.BeginPrediction);
+                new Vector2(-330f, 345f), 150f, ui.OnPlayPause);
+            MakeButton(rt, "Btn_Slow", "0.25x", new Vector2(-160f, 345f), 110f, ui.OnSpeedQuarter);
+            MakeButton(rt, "Btn_Normal", "1x", new Vector2(-30f, 345f), 90f, ui.OnSpeedNormal);
+            MakeButton(rt, "Btn_Replay", "Replay", new Vector2(90f, 345f), 110f, ui.OnReplay);
+            MakeButton(rt, "Btn_Reset", "Reset", new Vector2(220f, 345f), 100f, ui.OnReset);
 
-            // sliders: amplitude, frequency, exaggeration
+            // ---- WAVE SHAPE ------------------------------------------------------
+            MakeText(rt, "SecShape", "WAVE SHAPE", 14, FontStyle.Bold,
+                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
+                new Vector2(-30f, 292f), new Vector2(800f, 24f));
             ui.amplitudeSlider = MakeSlider(rt, "Slider_Amplitude",
-                new Vector2(-60f, 190f), 460f, 0f, 1f, parameters.strainAmplitude, ui.SetAmplitude);
+                new Vector2(-60f, 252f), 460f, 0f, 1f, parameters.strainAmplitude, ui.SetAmplitude);
             ui.amplitudeValueText = MakeText(rt, "AmpValue", "", 16, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 190f), new Vector2(250f, 30f));
+                new Vector2(215f, 252f), new Vector2(250f, 30f));
             MakeText(rt, "AmpLabel", "strain amplitude h0", 15, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, 152f), new Vector2(460f, 22f));
+                new Vector2(-60f, 216f), new Vector2(460f, 22f));
 
             ui.frequencySlider = MakeSlider(rt, "Slider_Frequency",
-                new Vector2(-60f, 100f), 460f, 0.05f, 4f, parameters.frequencyHz, ui.SetFrequency);
+                new Vector2(-60f, 178f), 460f, 0.05f, 4f, parameters.frequencyHz, ui.SetFrequency);
             ui.frequencyValueText = MakeText(rt, "FreqValue", "", 16, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 100f), new Vector2(250f, 30f));
+                new Vector2(215f, 178f), new Vector2(250f, 30f));
             MakeText(rt, "FreqLabel", "frequency f (Hz)", 15, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, 62f), new Vector2(460f, 22f));
+                new Vector2(-60f, 142f), new Vector2(460f, 22f));
 
             ui.exaggerationSlider = MakeSlider(rt, "Slider_Exaggeration",
-                new Vector2(-60f, 10f), 460f, 0f, 2f, parameters.displacementExaggeration,
+                new Vector2(-60f, 104f), 460f, 0f, 2f, parameters.displacementExaggeration,
                 ui.SetExaggeration);
             ui.exaggerationValueText = MakeText(rt, "ExagValue", "", 16, FontStyle.Normal,
                 TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 10f), new Vector2(260f, 30f));
+                new Vector2(215f, 104f), new Vector2(260f, 30f));
             MakeText(rt, "ExagLabel", "exaggeration: 0 = real scale (invisible)  ->  2 = max",
                 14, FontStyle.Normal, TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, -28f), new Vector2(700f, 26f));
+                new Vector2(-60f, 68f), new Vector2(700f, 26f));
 
-            // saved-wave slots
+            // ---- SAVED WAVES ----------------------------------------------------
+            MakeText(rt, "SecSlots", "SAVED WAVES", 14, FontStyle.Bold,
+                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
+                new Vector2(-30f, 25f), new Vector2(800f, 24f));
             lib.slotTexts = new Text[4];
             for (int i = 0; i < 4; i++)
             {
                 var t = MakeButton(rt, "Btn_Wave" + i, $"Wave {i + 1}  (empty)",
-                    new Vector2(-300f + i * 170f, -115f), 155f);
+                    new Vector2(-300f + i * 170f, -20f), 155f);
                 var b = t.transform.parent.GetComponent<Button>();
                 int slot = i;
                 UnityEventTools.AddIntPersistentListener(b.onClick, lib.LoadSlot, slot);
                 lib.slotTexts[i] = t;
             }
-            MakeText(rt, "SlotHint", "click a slot: empty = save current wave, saved = load it",
+            lib.saveHintText = MakeText(rt, "SlotHint",
+                "click a slot to load; 'SAVE TO SLOT' then a slot saves there",
                 13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(0.7f, 0.7f, 0.78f),
-                new Vector2(0f, -160f), new Vector2(860f, 24f));
-
-            MakeButton(rt, "Btn_Save", "Save wave", new Vector2(-130f, -230f), 210f,
-                lib.SaveCurrent);
-            MakeButton(rt, "Btn_ReplayWave", "Replay wave", new Vector2(130f, -230f), 210f,
+                new Vector2(0f, -58f), new Vector2(860f, 24f));
+            lib.saveButtonText = MakeButton(rt, "Btn_Save", "Save to slot...",
+                new Vector2(-130f, -105f), 210f, lib.ArmSave);
+            MakeButton(rt, "Btn_ReplayWave", "Replay wave", new Vector2(130f, -105f), 210f,
                 lib.ReplayCurrent);
+
+            // ---- MISSION TOOLS --------------------------------------------------
+            MakeText(rt, "SecMission", "MISSION TOOLS", 14, FontStyle.Bold,
+                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
+                new Vector2(-30f, -160f), new Vector2(800f, 24f));
+            ui.perspectiveButtonText = MakeButton(rt, "Btn_Ride", "Ride with the wave",
+                new Vector2(-160f, -200f), 260f, ui.OnTogglePerspective);
+            MakeButton(rt, "Btn_Predict", "Predict next mass",
+                new Vector2(130f, -200f), 220f, task.BeginPrediction);
+
             MakeText(rt, "IfNote",
                 "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it",
                 13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(1f, 0.55f, 0.55f),
-                new Vector2(0f, -290f), new Vector2(860f, 30f));
+                new Vector2(0f, -255f), new Vector2(860f, 30f));
 
             ui.statusText = MakeText(rt, "Status", "", 15, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
-                new Vector2(0f, -448f), new Vector2(920f, 26f));
+                new Vector2(0f, -310f), new Vector2(920f, 26f));
             MakeText(rt, "Legend",
                 "orange tint = stretch   |   blue tint = squeeze   |   nodes glow as the wavefront passes",
                 13, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.65f, 0.65f, 0.72f),
-                new Vector2(0f, -476f), new Vector2(920f, 20f));
+                new Vector2(0f, -345f), new Vector2(920f, 20f));
             return ui;
         }
 

@@ -42,7 +42,13 @@ namespace Project8.Story
         public Button restartButton;
 
         [Header("Choreography")]
-        public float rideLagBehindWavefront = 2.5f;
+        [Tooltip("How far past the ship the wave must travel before we start moving. " +
+                 "~7 m at the slowed visualization speed reads as a 1-2 second beat " +
+                 "after the merger flash, so the burst is visibly born first.")]
+        public float departLeadMeters = 7f;
+        [Tooltip("Distance the ship trails behind the wavefront while riding. Larger " +
+                 "values keep the strongest crest ahead in view instead of on top of us.")]
+        public float rideLagBehindWavefront = 5f;
         public float rideBlendSpeed = 2f;
         public float slideBlendSpeed = 1.2f;
         public Vector3 earthWatchOffset = new Vector3(0f, 3f, -18f);
@@ -141,7 +147,7 @@ namespace Project8.Story
                     // Ship stays parked. Only after the holes have coalesced AND the
                     // burst front has visibly left the binary do we start moving.
                     bool merged = simulation.SimulationTime >= model.parameters.inspiralDurationSeconds;
-                    if (merged && s >= SOf(ship.position) + 3f)
+                    if (merged && s >= SOf(ship.position) + departLeadMeters)
                     {
                         _phase = Phase.Riding;
                         Narrate("Rick: The wave is out - and we move with it. We trail just " +
