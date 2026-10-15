@@ -39,3 +39,7 @@ crashlytics-build.properties
 # stray 0-byte artifacts from XR settings generation (safe to delete manually)
 /OpenXR
 /XR
+
+# Android build temp + outputs
+.utmp/
+Builds/
