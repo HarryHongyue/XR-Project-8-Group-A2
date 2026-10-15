@@ -18,12 +18,36 @@ namespace Project8.Interaction
         public float lookSensitivity = 0.12f;
         public Behaviour xrInputModule;
         public InputSystemUIInputModule desktopInputModule;
+        [Tooltip("XR rig root that gets rotated at startup so the user's initial view " +
+                 "faces the ship forward (+Z), regardless of their guardian orientation.")]
+        public Transform xrRigRoot;
 
         enum Drawer { None, Secondary, Controls }
         Drawer _drawer;
         bool _desktop;
         float _yaw;
         float _pitch;
+
+        /// <summary>In XR the user's physical facing rarely matches the rig's +Z, so
+        /// everything built "ahead" of the ship (panels, black holes) can sit behind
+        /// them. Rotate the rig around the camera position once tracking settles so
+        /// forward really is forward.</summary>
+        System.Collections.IEnumerator RecenterToShipForward()
+        {
+            yield return new WaitForSeconds(0.6f); // let the first real pose arrive
+            for (int i = 0; i < 30; i++)
+            {
+                if (xrRigRoot == null || seatedCamera == null) yield break;
+                Vector3 have = seatedCamera.transform.forward;
+                Vector3 want = transform.forward;
+                have.y = 0f; want.y = 0f;
+                if (have.sqrMagnitude < 0.01f) { yield return null; continue; }
+                float yaw = Vector3.SignedAngle(have.normalized, want.normalized, Vector3.up);
+                xrRigRoot.RotateAround(seatedCamera.transform.position, Vector3.up, yaw);
+                if (Mathf.Abs(yaw) < 0.5f) yield break;
+                yield return null;
+            }
+        }
 
         void Start()
         {
@@ -37,6 +61,7 @@ namespace Project8.Interaction
             }
             if (xrInputModule != null) xrInputModule.enabled = !_desktop;
             if (desktopInputModule != null) desktopInputModule.enabled = _desktop;
+            if (!_desktop) StartCoroutine(RecenterToShipForward());
             ClosePanels();
         }
 

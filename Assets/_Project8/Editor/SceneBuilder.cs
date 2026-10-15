@@ -458,6 +458,7 @@ namespace Project8.EditorTools
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = camera;
+            cockpit.xrRigRoot = rig.transform;
             cockpit.flightSpeed = 0f;
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
@@ -649,6 +650,7 @@ namespace Project8.EditorTools
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = seatCamera;
+            cockpit.xrRigRoot = rig.transform;
 
             // --- perspective -----------------------------------------------------
             var perspGO = new GameObject("PerspectiveController");
