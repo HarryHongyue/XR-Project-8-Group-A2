@@ -99,9 +99,12 @@ namespace Project8.Interaction
         void Update()
         {
             // ---- VR thumbstick flight (runs before the desktop early-out) --------
-            // Left stick translates the ship relative to where the user LOOKS (head
-            // forward), right stick X yaws the ship, right stick Y lifts/lowers it.
-            // Head rotation itself is untouched - TrackedPoseDriver owns full 6DOF.
+            // The head is pure free-look (TrackedPoseDriver owns it) and NEVER
+            // steers the ship. Left stick translates along the SHIP's own axes so
+            // pushing forward always flies nose-forward no matter where the user
+            // is looking; right stick X yaws the hull around the user's head so
+            // the seat stays put instead of swinging on a long lever arm, and
+            // right stick Y lifts/lowers the ship.
             if (!_desktop && (story == null || story.CanPilot) && seatedCamera != null)
             {
                 Vector2 move = Vector2.zero, turn = Vector2.zero;
@@ -111,22 +114,17 @@ namespace Project8.Interaction
                     leftDev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out move);
                 if (rightDev.isValid)
                     rightDev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out turn);
-                if (move.sqrMagnitude > 0.02f || Mathf.Abs(turn.y) > 0.15f)
+                Vector3 fwd = transform.forward; fwd.y = 0f;
+                Vector3 rgt = transform.right; rgt.y = 0f;
+                if (fwd.sqrMagnitude > 0.01f)
                 {
-                    Vector3 fwd = seatedCamera.transform.forward;
-                    Vector3 rgt = seatedCamera.transform.right;
-                    fwd.y = 0f; rgt.y = 0f;
-                    if (fwd.sqrMagnitude > 0.01f && rgt.sqrMagnitude > 0.01f)
-                    {
-                        fwd.Normalize(); rgt.Normalize();
-                        transform.position += (fwd * move.y + rgt * move.x) *
-                            flightSpeed * Time.deltaTime;
-                        transform.position += Vector3.up * turn.y *
-                            flightSpeed * 0.6f * Time.deltaTime;
-                    }
+                    fwd.Normalize(); rgt.Normalize();
+                    transform.position += (fwd * move.y + rgt * move.x +
+                        Vector3.up * turn.y * 0.6f) * flightSpeed * Time.deltaTime;
                 }
                 if (Mathf.Abs(turn.x) > 0.15f)
-                    transform.Rotate(0f, turn.x * 90f * Time.deltaTime, 0f, Space.World);
+                    transform.RotateAround(seatedCamera.transform.position, Vector3.up,
+                        turn.x * 90f * Time.deltaTime);
             }
 
             if (!_desktop || Keyboard.current == null) return;

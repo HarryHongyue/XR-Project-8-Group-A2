@@ -461,7 +461,7 @@ namespace Project8.EditorTools
             camera.farClipPlane = 3000f;
             camera.stereoTargetEye = StereoTargetEyeMask.Both;
             camera.tag = "MainCamera";
-            SetupInteractors(rig.transform);
+            DisableSampleLocomotion(rig.transform);
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = camera;
@@ -659,13 +659,7 @@ namespace Project8.EditorTools
                 cam.tag = "MainCamera";
             }
             simGO.AddComponent<Project8.Diagnostics.VRDiagnostics>();
-            foreach (var component in rig.GetComponentsInChildren<Behaviour>(true))
-            {
-                string name = component.GetType().Name;
-                if (name.Contains("MoveProvider") || name.Contains("TurnProvider") ||
-                    name.Contains("TeleportationProvider")) component.enabled = false;
-            }
-            SetupInteractors(rig.transform);
+            DisableSampleLocomotion(rig.transform);
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = seatCamera;
@@ -1581,35 +1575,30 @@ namespace Project8.EditorTools
             return xrOrigin != null ? xrOrigin : rig;
         }
 
-        /// <summary>Attach the sample's left/right Near-Far interactors under the rig's
-        /// Camera Offset so controllers get a tracked pose, a far ray for UI pointing
-        /// and a near/poke interactor. Without these the headset sees no hands and the
-        /// panels cannot be clicked.</summary>
-        static void SetupInteractors(Transform rig)
+        /// <summary>The starter rig already ships tracked NearFar interactors under
+        /// "Left Controller"/"Right Controller", plus a full locomotion stack (Move,
+        /// Turn/Snap Turn, Teleport, Climb, Grab Move, Jump, Gravity) bound to the
+        /// same thumbsticks CockpitControls reads. Both systems reading the sticks
+        /// produces double translation and opposing yaw, and teleport rays pop out
+        /// when the stick is pushed - so every sample locomotion object and provider
+        /// is disabled; the ship is flown exclusively by CockpitControls.</summary>
+        static void DisableSampleLocomotion(Transform rig)
         {
-            var offset = rig.GetComponentsInChildren<Transform>(true)
-                .FirstOrDefault(t => t.name.IndexOf("Camera Offset",
-                    StringComparison.OrdinalIgnoreCase) >= 0) ?? rig;
-            foreach (string file in new[] { "Left_NearFarInteractor", "Right_NearFarInteractor" })
+            string[] names =
             {
-                GameObject prefab = null;
-                foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/Samples" }))
-                {
-                    string path = AssetDatabase.GUIDToAssetPath(guid);
-                    if (System.IO.Path.GetFileNameWithoutExtension(path) != file) continue;
-                    prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-                    break;
-                }
-                if (prefab == null)
-                {
-                    Debug.LogWarning($"[Project8] {file} prefab not found - import XRI Starter Assets.");
-                    continue;
-                }
-                var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-                inst.name = file;
-                inst.transform.SetParent(offset, false);
-                inst.transform.localPosition = Vector3.zero;
-                inst.transform.localRotation = Quaternion.identity;
+                "Locomotion", "Move", "Turn", "Gravity", "Teleportation",
+                "Climb", "Climb Teleport", "Grab Move", "Jump"
+            };
+            foreach (var t in rig.GetComponentsInChildren<Transform>(true))
+                if (names.Any(n => string.Equals(t.name, n, StringComparison.OrdinalIgnoreCase)) ||
+                    t.name.IndexOf("Teleport", StringComparison.OrdinalIgnoreCase) >= 0)
+                    t.gameObject.SetActive(false);
+            foreach (var b in rig.GetComponentsInChildren<Behaviour>(true))
+            {
+                string tn = b.GetType().Name;
+                if (tn.IndexOf("LocomotionMediator", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    tn.IndexOf("LocomotionProvider", StringComparison.OrdinalIgnoreCase) >= 0)
+                    b.enabled = false;
             }
         }
 
