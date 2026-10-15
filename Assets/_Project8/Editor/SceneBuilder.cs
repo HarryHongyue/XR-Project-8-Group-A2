@@ -453,13 +453,20 @@ namespace Project8.EditorTools
             var origin = rig.GetComponentInChildren<Unity.XR.CoreUtils.XROrigin>(true);
             origin.CameraYOffset = 1.25f;
             origin.CameraFloorOffsetObject.transform.localPosition = Vector3.up * 1.25f;
+            origin.RequestedTrackingOriginMode = Unity.XR.CoreUtils.XROrigin.TrackingOriginMode.Device;
             var camera = rig.GetComponentInChildren<Camera>(true);
             camera.clearFlags = CameraClearFlags.Skybox;
+            camera.cullingMask = -1;
+            camera.nearClipPlane = 0.02f;
+            camera.farClipPlane = 3000f;
+            camera.stereoTargetEye = StereoTargetEyeMask.Both;
+            camera.tag = "MainCamera";
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = camera;
             cockpit.xrRigRoot = rig.transform;
             cockpit.flightSpeed = 0f;
+            ship.AddComponent<Project8.Diagnostics.VRDiagnostics>();
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
             cockpit.xrInputModule = (Behaviour)AddComponentByNames(es,
@@ -634,13 +641,23 @@ namespace Project8.EditorTools
             {
                 xrOrigin.CameraYOffset = 1.25f;
                 xrOrigin.CameraFloorOffsetObject.transform.localPosition = Vector3.up * 1.25f;
+                // Floor-origin tracking can sink a seated user inside the hull when the
+                // guardian floor is not where Unity expects it. Device origin keeps the
+                // head pose relative to the HMD itself - safe for a seated experience.
+                xrOrigin.RequestedTrackingOriginMode = Unity.XR.CoreUtils.XROrigin.TrackingOriginMode.Device;
             }
             var seatCamera = rig.GetComponentInChildren<Camera>(true);
             foreach (var cam in rig.GetComponentsInChildren<Camera>(true))
             {
                 cam.clearFlags = CameraClearFlags.Skybox;
                 cam.backgroundColor = new Color(0.008f, 0.01f, 0.02f);
+                cam.cullingMask = -1;
+                cam.nearClipPlane = 0.02f;
+                cam.farClipPlane = 3000f;
+                cam.stereoTargetEye = StereoTargetEyeMask.Both;
+                cam.tag = "MainCamera";
             }
+            simGO.AddComponent<Project8.Diagnostics.VRDiagnostics>();
             foreach (var component in rig.GetComponentsInChildren<Behaviour>(true))
             {
                 string name = component.GetType().Name;
