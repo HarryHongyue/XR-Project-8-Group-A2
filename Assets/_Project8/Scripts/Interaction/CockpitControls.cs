@@ -3,6 +3,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.XR;
 using Project8.Story;
+using System.Linq;
 
 namespace Project8.Interaction
 {
@@ -49,20 +50,52 @@ namespace Project8.Interaction
             }
         }
 
+        Behaviour[] _poseDrivers;
+        GameObject _deviceSim;
+
         void Start()
         {
+            if (seatedCamera != null)
+                _poseDrivers = seatedCamera.GetComponents<Behaviour>()
+                    .Where(b => b.GetType().Name.Contains("TrackedPoseDriver")).ToArray();
+            // The device simulator is spawned inactive; it only comes alive when
+            // this settles into desktop mode.
+            foreach (var root in UnityEngine.SceneManagement.SceneManager
+                         .GetActiveScene().GetRootGameObjects())
+                if (root.name.IndexOf("Device Simulator",
+                        System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    _deviceSim = root;
+            StartCoroutine(DetectXRThenConfigure());
+            ClosePanels();
+        }
+
+        /// <summary>XR init can lag behind the first scene's Start(): deciding the
+        /// desktop/XR mode from a single isDeviceActive read misconfigures BOTH
+        /// directions - in VR it leaves the XR UI input module disabled (rays can
+        /// never click) and lets the keyboard/mouse device simulator swallow real
+        /// headset input. Poll for a few seconds, then commit.</summary>
+        System.Collections.IEnumerator DetectXRThenConfigure()
+        {
+            for (int i = 0; i < 8 && !XRSettings.isDeviceActive; i++)
+                yield return new WaitForSeconds(0.5f);
             _desktop = !XRSettings.isDeviceActive;
+            ConfigureForMode();
+            if (!_desktop) StartCoroutine(RecenterToShipForward());
+        }
+
+        void ConfigureForMode()
+        {
+            if (_poseDrivers != null)
+                foreach (var d in _poseDrivers)
+                    if (d != null) d.enabled = !_desktop;
             if (_desktop && seatedCamera != null)
             {
-                foreach (var component in seatedCamera.GetComponents<Behaviour>())
-                    if (component.GetType().Name.Contains("TrackedPoseDriver")) component.enabled = false;
                 seatedCamera.transform.localPosition = Vector3.zero;
                 seatedCamera.transform.localRotation = Quaternion.identity;
             }
             if (xrInputModule != null) xrInputModule.enabled = !_desktop;
             if (desktopInputModule != null) desktopInputModule.enabled = _desktop;
-            if (!_desktop) StartCoroutine(RecenterToShipForward());
-            ClosePanels();
+            if (_deviceSim != null) _deviceSim.SetActive(_desktop);
         }
 
         public void TogglePanel() => ShowControls();
@@ -114,6 +147,12 @@ namespace Project8.Interaction
                     leftDev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out move);
                 if (rightDev.isValid)
                     rightDev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out turn);
+                // Fallback: some runtimes only expose the stick through the
+                // Input System's dynamic XRController layout.
+                if (move == Vector2.zero)
+                    move = ReadStick(UnityEngine.InputSystem.XR.XRController.leftHand);
+                if (turn == Vector2.zero)
+                    turn = ReadStick(UnityEngine.InputSystem.XR.XRController.rightHand);
                 Vector3 fwd = transform.forward; fwd.y = 0f;
                 Vector3 rgt = transform.right; rgt.y = 0f;
                 if (fwd.sqrMagnitude > 0.01f)
@@ -166,6 +205,16 @@ namespace Project8.Interaction
             else _yaw = Mathf.Clamp(_yaw + delta.x, -80f, 80f);
             _pitch = Mathf.Clamp(_pitch - delta.y, -60f, 70f);
             seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, _yaw, 0f);
+        }
+
+        static Vector2 ReadStick(UnityEngine.InputSystem.XR.XRController controller)
+        {
+            if (controller == null) return Vector2.zero;
+            var stick = controller.TryGetChildControl<
+                            UnityEngine.InputSystem.Controls.Vector2Control>("thumbstick")
+                        ?? controller.TryGetChildControl<
+                            UnityEngine.InputSystem.Controls.Vector2Control>("joystick");
+            return stick != null ? stick.ReadValue() : Vector2.zero;
         }
 
         void LateUpdate()

@@ -1559,7 +1559,12 @@ namespace Project8.EditorTools
                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
                 inst.name = "XR Device Simulator (keyboard/mouse)";
-                Debug.Log($"[Project8] Device simulator instantiated: {name}");
+                // Spawned inactive on purpose: when a real headset is connected the
+                // simulator's fake HMD/controller devices hijack every action
+                // binding - dead rays, dead sticks, frozen head. CockpitControls
+                // activates it only after confirming no XR device is present.
+                inst.SetActive(false);
+                Debug.Log($"[Project8] Device simulator instantiated (inactive): {name}");
                 return;
             }
             Debug.LogWarning("[Project8] XR Device Simulator prefab not found - run " +
