@@ -461,6 +461,7 @@ namespace Project8.EditorTools
             camera.farClipPlane = 3000f;
             camera.stereoTargetEye = StereoTargetEyeMask.Both;
             camera.tag = "MainCamera";
+            SetupInteractors(rig.transform);
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = camera;
@@ -664,6 +665,7 @@ namespace Project8.EditorTools
                 if (name.Contains("MoveProvider") || name.Contains("TurnProvider") ||
                     name.Contains("TeleportationProvider")) component.enabled = false;
             }
+            SetupInteractors(rig.transform);
             SetupInteractionManager();
             var cockpit = ship.AddComponent<CockpitControls>();
             cockpit.seatedCamera = seatCamera;
@@ -1577,6 +1579,38 @@ namespace Project8.EditorTools
             var xrOrigin = rig.GetComponentsInChildren<Transform>(true)
                 .FirstOrDefault(t => t.name.IndexOf("XR Origin", StringComparison.OrdinalIgnoreCase) >= 0);
             return xrOrigin != null ? xrOrigin : rig;
+        }
+
+        /// <summary>Attach the sample's left/right Near-Far interactors under the rig's
+        /// Camera Offset so controllers get a tracked pose, a far ray for UI pointing
+        /// and a near/poke interactor. Without these the headset sees no hands and the
+        /// panels cannot be clicked.</summary>
+        static void SetupInteractors(Transform rig)
+        {
+            var offset = rig.GetComponentsInChildren<Transform>(true)
+                .FirstOrDefault(t => t.name.IndexOf("Camera Offset",
+                    StringComparison.OrdinalIgnoreCase) >= 0) ?? rig;
+            foreach (string file in new[] { "Left_NearFarInteractor", "Right_NearFarInteractor" })
+            {
+                GameObject prefab = null;
+                foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/Samples" }))
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (System.IO.Path.GetFileNameWithoutExtension(path) != file) continue;
+                    prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    break;
+                }
+                if (prefab == null)
+                {
+                    Debug.LogWarning($"[Project8] {file} prefab not found - import XRI Starter Assets.");
+                    continue;
+                }
+                var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                inst.name = file;
+                inst.transform.SetParent(offset, false);
+                inst.transform.localPosition = Vector3.zero;
+                inst.transform.localRotation = Quaternion.identity;
+            }
         }
 
         // -------------------------------------------------------- interaction setup

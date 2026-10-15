@@ -98,6 +98,37 @@ namespace Project8.Interaction
 
         void Update()
         {
+            // ---- VR thumbstick flight (runs before the desktop early-out) --------
+            // Left stick translates the ship relative to where the user LOOKS (head
+            // forward), right stick X yaws the ship, right stick Y lifts/lowers it.
+            // Head rotation itself is untouched - TrackedPoseDriver owns full 6DOF.
+            if (!_desktop && (story == null || story.CanPilot) && seatedCamera != null)
+            {
+                Vector2 move = Vector2.zero, turn = Vector2.zero;
+                var leftDev = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.LeftHand);
+                var rightDev = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.RightHand);
+                if (leftDev.isValid)
+                    leftDev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out move);
+                if (rightDev.isValid)
+                    rightDev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out turn);
+                if (move.sqrMagnitude > 0.02f || Mathf.Abs(turn.y) > 0.15f)
+                {
+                    Vector3 fwd = seatedCamera.transform.forward;
+                    Vector3 rgt = seatedCamera.transform.right;
+                    fwd.y = 0f; rgt.y = 0f;
+                    if (fwd.sqrMagnitude > 0.01f && rgt.sqrMagnitude > 0.01f)
+                    {
+                        fwd.Normalize(); rgt.Normalize();
+                        transform.position += (fwd * move.y + rgt * move.x) *
+                            flightSpeed * Time.deltaTime;
+                        transform.position += Vector3.up * turn.y *
+                            flightSpeed * 0.6f * Time.deltaTime;
+                    }
+                }
+                if (Mathf.Abs(turn.x) > 0.15f)
+                    transform.Rotate(0f, turn.x * 90f * Time.deltaTime, 0f, Space.World);
+            }
+
             if (!_desktop || Keyboard.current == null) return;
             var keys = Keyboard.current;
             if (keys.mKey.wasPressedThisFrame) TogglePanel();
