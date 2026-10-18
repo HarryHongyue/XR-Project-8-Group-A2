@@ -193,7 +193,6 @@ namespace Project8.Story
                     if (SlideTo(earth.position + earthWatchOffset))
                     {
                         _phase = Phase.EarthPause;
-                        if (cockpit != null) cockpit.OpenMission();
                         Narrate("Rick: Parked 90 degrees off the wave path - the whole planet " +
                                 "is in view. Try the CONTROLS panel: change the amplitude, " +
                                 "frequency or exaggeration and watch how the wave through " +
@@ -240,7 +239,6 @@ namespace Project8.Story
         void FinishMission()
         {
             _phase = Phase.Done;
-            if (cockpit != null) cockpit.OpenMission();
             Narrate("Rick: Real gravitational waves reach Earth at a strain of only ~1e-21 - " +
                     "far too small to see. This LIGO-style detector measures them with two " +
                     "perpendicular laser arms: the wave stretches one arm while it squeezes " +

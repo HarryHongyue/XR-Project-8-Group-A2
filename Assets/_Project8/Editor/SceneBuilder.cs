@@ -37,22 +37,26 @@ namespace Project8.EditorTools
         static Sprite _uiSprite;
         static Sprite _knobSprite;
 
-        // ---- glass / neumorphic UI palette ------------------------------------
-        static readonly Color PanelGlass  = new Color(0.07f, 0.10f, 0.16f, 0.58f);
-        static readonly Color Accent      = new Color(0.45f, 0.85f, 0.95f);
-        static readonly Color ButtonFill  = new Color(0.13f, 0.28f, 0.40f, 0.78f);
-        static readonly Color ButtonHover = new Color(0.28f, 0.55f, 0.72f);
-        static readonly Color ButtonDown  = new Color(0.45f, 0.80f, 0.95f);
-        static readonly Color WellFill    = new Color(0.05f, 0.08f, 0.13f, 0.82f);
+        // ---- liquid-glass UI palette -------------------------------------------
+        static readonly Color PanelGlass  = new Color(0.09f, 0.14f, 0.24f, 0.40f);
+        static readonly Color Accent      = new Color(0.50f, 0.90f, 1f);
+        static readonly Color ButtonFill  = new Color(0.35f, 0.55f, 0.78f, 0.30f);
+        static readonly Color ButtonHover = new Color(0.50f, 0.75f, 0.95f, 0.55f);
+        static readonly Color ButtonDown  = new Color(0.60f, 0.90f, 1f, 0.80f);
+        static readonly Color WellFill    = new Color(0.04f, 0.07f, 0.12f, 0.60f);
 
-        /// <summary>Glass look for a panel background: translucent dark fill, a soft
-        /// drop shadow and a thin accent strip along the top edge.</summary>
+        /// <summary>Liquid-glass look: a translucent blue-tinted fill, a faint rim
+        /// of light around the panel, a soft drop shadow and a thin accent strip
+        /// along the top edge.</summary>
         static void StylePanel(Image bg)
         {
             bg.color = PanelGlass;
             var shadow = bg.gameObject.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
-            shadow.effectDistance = new Vector2(0f, -10f);
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.55f);
+            shadow.effectDistance = new Vector2(0f, -12f);
+            var rim = bg.gameObject.AddComponent<Outline>();
+            rim.effectColor = new Color(Accent.r, Accent.g, Accent.b, 0.35f);
+            rim.effectDistance = new Vector2(1.5f, -1.5f);
             var strip = NewUIObject("TopAccent", bg.transform);
             strip.anchorMin = new Vector2(0f, 1f);
             strip.anchorMax = new Vector2(1f, 1f);
@@ -106,7 +110,7 @@ namespace Project8.EditorTools
                 var scene = EditorSceneManager.OpenScene($"{Root}/Scenes/{sceneName}.unity");
                 var objects = scene.GetRootGameObjects()
                     .SelectMany(root => root.GetComponentsInChildren<Transform>(true)).ToArray();
-                foreach (string required in new[] { "Spaceship", "Starfield", "Earth", "ControlPanel", "MenuRail", "SpacetimeVolume" })
+                foreach (string required in new[] { "Spaceship", "Starfield", "Earth", "ControlPanel", "MenuRail", "SpacetimeSheet", "SubtitleBar", "RickAvatar" })
                     if (!objects.Any(t => t.name == required))
                         throw new InvalidOperationException($"{sceneName}: missing {required}");
                 var starRenderer = objects.Select(t => t.GetComponent<ParticleSystemRenderer>())
@@ -121,11 +125,11 @@ namespace Project8.EditorTools
                 if (cockpit == null || cockpit.controlPanel.activeSelf ||
                     cockpit.secondaryPanel.activeSelf || !cockpit.compactPanel.activeSelf)
                     throw new InvalidOperationException($"{sceneName}: drawer panels must start closed");
-                var volume = objects.Select(t => t.GetComponent<SpacetimeVolume>())
+                var sheet = objects.Select(t => t.GetComponent<SpacetimeSheet>())
                     .FirstOrDefault(component => component != null);
-                if (volume == null || volume.ship == null || volume.wells == null ||
-                    volume.wells.Length == 0)
-                    throw new InvalidOperationException($"{sceneName}: incomplete 3D spacetime field");
+                if (sheet == null || sheet.wells == null || sheet.wells.Length == 0 ||
+                    sheet.sheetMaterial == null)
+                    throw new InvalidOperationException($"{sceneName}: incomplete spacetime sheet");
                 var origin = objects.Select(t => t.GetComponent<Unity.XR.CoreUtils.XROrigin>())
                     .FirstOrDefault(component => component != null);
                 if (origin == null || !origin.name.Contains("XR Rig") || origin.Camera == null)
@@ -183,12 +187,10 @@ namespace Project8.EditorTools
             if (_smokeStart <= 0d) _smokeStart = EditorApplication.timeSinceStartup;
             double elapsed = EditorApplication.timeSinceStartup - _smokeStart;
 
-            var volume = UnityEngine.Object.FindAnyObjectByType<SpacetimeVolume>();
-            var mesh = volume != null ? volume.GetComponent<MeshFilter>().sharedMesh : null;
-            var points = volume != null ? volume.GetComponentInChildren<ParticleSystem>() : null;
+            var sheet = UnityEngine.Object.FindAnyObjectByType<SpacetimeSheet>();
+            var mesh = sheet != null ? sheet.GetComponent<MeshFilter>().sharedMesh : null;
             var stars = GameObject.Find("Starfield")?.GetComponent<ParticleSystem>();
-            bool ready = mesh != null && mesh.vertexCount >= 2000 && points != null &&
-                         points.particleCount >= 2000 &&
+            bool ready = mesh != null && mesh.vertexCount >= 2000 &&
                          stars != null && stars.particleCount >= 500;
             if (!ready)
             {
@@ -196,18 +198,17 @@ namespace Project8.EditorTools
                 if (elapsed < 25d) return;
                 EditorApplication.update -= CheckSmokeScene;
                 SessionState.SetBool(SmokeSessionKey, false);
-                Debug.LogError("[Project8] Play smoke failed: spacetime volume or textured " +
+                Debug.LogError("[Project8] Play smoke failed: spacetime sheet or textured " +
                                "stars did not animate in Play mode within 25s " +
                                $"(mesh={(mesh != null ? mesh.vertexCount : -1)}, " +
-                               $"points={(points != null ? points.particleCount : -1)}, " +
                                $"stars={(stars != null ? stars.particleCount : -1)})");
                 EditorApplication.Exit(1);
                 return;
             }
             EditorApplication.update -= CheckSmokeScene;
             SessionState.SetBool(SmokeSessionKey, false);
-            Debug.Log($"[Project8] Play smoke passed: {mesh.vertexCount} lattice nodes, " +
-                      $"{points.particleCount} test-mass particles, {stars.particleCount} stars.");
+            Debug.Log($"[Project8] Play smoke passed: {mesh.vertexCount} sheet vertices, " +
+                      $"{stars.particleCount} stars.");
             EditorApplication.Exit(0);
         }
 
@@ -585,35 +586,26 @@ namespace Project8.EditorTools
             deformer.model = model;
             deformer.simulation = controller;
 
-            // --- test-mass "net" --------------------------------------------------
-            var volumeGO = new GameObject("SpacetimeVolume");
-            var volume = volumeGO.AddComponent<SpacetimeVolume>();
-            volume.model = model;
-            volume.simulation = controller;
-            // Every mass dents the lattice at all times: the black holes carve deep,
-            // wide wells (mass >> Earth); Earth presses a shallower, still visible dip.
-            // 'radius' divides squared distance - it behaves like sigma^2, so larger
-            // values spread the dent over more nodes and keep it smooth.
-            var wells = new System.Collections.Generic.List<SpacetimeVolume.GravityWell>
+            // --- spacetime "bedsheet" ---------------------------------------------
+            // One flexible translucent membrane replaces the old multi-layer lattice:
+            // masses press smooth gaussian dents into it - the black holes deep and
+            // narrow, Earth shallow and wide - and the wave ripples across the cloth.
+            var sheetGO = new GameObject("SpacetimeSheet");
+            var sheet = sheetGO.AddComponent<SpacetimeSheet>();
+            sheet.model = model;
+            sheet.simulation = controller;
+            sheetGO.transform.position = new Vector3(18f, 0f, 22f);
+            sheet.sheetMaterial = MakeMaterial("M_SpacetimeSheet", "Project8/SpacetimeSheet", Color.white);
+            sheet.size = new Vector2(160f, 78f);
+            sheet.baseHeight = -1.6f;
+            sheet.flexibility = 1.35f;
+            sheet.wells = new[]
             {
-                new SpacetimeVolume.GravityWell { source = binary.blackHoleA, depth = 5.5f, radius = 150f },
-                new SpacetimeVolume.GravityWell { source = binary.blackHoleB, depth = 5.5f, radius = 150f },
-                new SpacetimeVolume.GravityWell { source = binary.mergedHole, depth = 5.5f, radius = 150f },
-                // Earth is a planet, not a black hole, but it is still a heavy mass:
-                // give it a clearly visible wide dip, a bit shallower than the holes.
-                new SpacetimeVolume.GravityWell { source = earth.transform, depth = 3.4f, radius = 220f },
+                new SpacetimeSheet.GravityWell { source = binary.blackHoleA, depth = 7f, radius = 4.5f },
+                new SpacetimeSheet.GravityWell { source = binary.blackHoleB, depth = 7f, radius = 4.5f },
+                new SpacetimeSheet.GravityWell { source = binary.mergedHole, depth = 7f, radius = 5.5f },
+                new SpacetimeSheet.GravityWell { source = earth.transform, depth = 1.7f, radius = 8f },
             };
-            volume.wells = wells.ToArray();
-            volume.lineMaterial = mats.NetLine;
-            volume.pointMaterial = CreateStarMaterial();
-            volume.countX = 61;
-            volume.countY = 13;
-            volume.countZ = 61;
-            volume.spacing = 2f;
-            volume.pointSize = 0.09f;
-            volume.centre = new Vector3(18f, 0.5f, 16f);
-            volume.connectLayers = false;
-            volume.recenterOnShip = true;
 
             var fieldGO = new GameObject("PredictionTestMasses");
             fieldGO.transform.position = new Vector3(-5f, 1.8f, 15f);
@@ -633,7 +625,6 @@ namespace Project8.EditorTools
             // binary-Earth line, facing +Z straight at it. No approach flight -
             // the mission starts with the binary dead ahead.
             ship.transform.position = new Vector3(-16f, 1.5f, 4f);
-            volume.ship = ship.transform;
             var rig = InstantiateXRRig();
             rig.transform.SetParent(ship.transform, false);
             rig.transform.localPosition = seatPos;
@@ -702,8 +693,9 @@ namespace Project8.EditorTools
 
             task.ui = panel;
             cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eyeWorld);
-            // Rick's chat bubble is always-on and independent of the drawers.
-            BuildChatBubble(ship.transform, eyeWorld, tutor, voice);
+            // Rick rides as a small avatar in the lower-right; clicking it opens
+            // the chat window instead of leaving a bubble up permanently.
+            BuildRickAvatar(ship.transform, eyeWorld, tutor, voice);
             panel.gameObject.SetActive(false);
             cockpit.secondaryPanel.SetActive(false);
 
@@ -855,48 +847,81 @@ namespace Project8.EditorTools
             return go;
         }
 
-        // ------------------------------------------- floating Rick chat bubble
-        /// <summary>The AI tutor is a small always-on chat bubble in the lower-right
-        /// of the canopy - separated from the Mission/Controls drawers so scripted
-        /// narration stays readable and the chat never covers the view.</summary>
-        static void BuildChatBubble(Transform ship, Vector3 eye, AITutor tutor,
+        // --------------------------------------------- Rick avatar + chat window
+        /// <summary>Rick shows up as a small round avatar floating at the lower-right
+        /// of the canopy. Clicking it opens (or closes) the chat window - an input
+        /// row with a voice button at its right edge and the answer text above.</summary>
+        static void BuildRickAvatar(Transform ship, Vector3 eye, AITutor tutor,
                                     Project8.UI.RickVoice voice)
         {
-            var canvasGO = new GameObject("ChatBubble");
+            var canvasGO = new GameObject("RickAvatar");
             var canvas = canvasGO.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvasGO.AddComponent<GraphicRaycaster>();
             AddComponentByNames(canvasGO,
                 "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
             var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(470f, 330f);
+            rt.sizeDelta = new Vector2(480f, 380f);
             canvasGO.transform.SetParent(ship, true);
-            canvasGO.transform.localPosition = new Vector3(0.60f, 0.86f, 1.02f);
+            canvasGO.transform.localPosition = new Vector3(0.60f, 0.88f, 1.02f);
             canvasGO.transform.localScale = Vector3.one * 0.00105f;
             canvasGO.transform.rotation =
                 Quaternion.LookRotation((canvasGO.transform.position - eye).normalized, Vector3.up);
 
-            var bg = NewUIObject("Background", rt);
-            Stretch(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = _uiSprite;
-            bgImg.type = Image.Type.Sliced;
-            StylePanel(bgImg);
-
-            MakeText(rt, "Title", "RICK", 15, FontStyle.Bold, TextAnchor.MiddleLeft,
-                Accent, new Vector2(-140f, 135f), new Vector2(200f, 26f));
-            MakeText(rt, "Hint", "AI tutor", 13, FontStyle.Italic, TextAnchor.MiddleLeft,
-                new Color(0.7f, 0.75f, 0.85f, 0.9f), new Vector2(10f, 135f), new Vector2(280f, 26f));
-
             var chat = canvasGO.AddComponent<TutorChatUI>();
             chat.tutor = tutor;
             chat.voice = voice;
-            chat.answerText = MakeText(rt, "Answer", "", 14, FontStyle.Normal,
+
+            // -- collapsible chat window --------------------------------------
+            var window = NewUIObject("ChatWindow", rt);
+            window.anchoredPosition = new Vector2(0f, 40f);
+            window.sizeDelta = new Vector2(460f, 290f);
+            var winImg = window.gameObject.AddComponent<Image>();
+            winImg.sprite = _uiSprite;
+            winImg.type = Image.Type.Sliced;
+            StylePanel(winImg);
+
+            MakeText(window, "Title", "RICK", 16, FontStyle.Bold, TextAnchor.MiddleLeft,
+                Accent, new Vector2(-130f, 118f), new Vector2(160f, 26f));
+            MakeText(window, "Hint", "AI tutor", 13, FontStyle.Italic, TextAnchor.MiddleLeft,
+                new Color(0.7f, 0.75f, 0.85f, 0.9f), new Vector2(30f, 118f), new Vector2(200f, 26f));
+
+            chat.answerText = MakeText(window, "Answer", "", 14, FontStyle.Normal,
                 TextAnchor.UpperLeft, new Color(0.85f, 0.92f, 1f),
-                new Vector2(0f, 25f), new Vector2(430f, 200f));
-            chat.questionInput = MakeInput(rt, "AskInput", new Vector2(-75f, -128f),
-                290f, "Ask Rick a question...");
-            MakeButton(rt, "Btn_Ask", "ASK", new Vector2(160f, -128f), 100f, chat.Ask);
+                new Vector2(0f, 30f), new Vector2(420f, 160f));
+            chat.questionInput = MakeInput(window, "AskInput", new Vector2(-65f, -110f),
+                280f, "Ask Rick a question...");
+            var micText = MakeButton(window, "Btn_Mic", "MIC", new Vector2(112f, -110f),
+                56f, chat.ToggleVoiceInput);
+            chat.micButton = micText.transform.parent.GetComponent<Button>();
+            chat.micLabel = micText;
+            MakeButton(window, "Btn_Ask", "ASK", new Vector2(182f, -110f), 86f, chat.Ask);
+            chat.chatWindow = window.gameObject;
+
+            // -- avatar button: round glass chip, always visible ---------------
+            var avatar = NewUIObject("Avatar", rt);
+            avatar.anchoredPosition = new Vector2(175f, -140f);
+            avatar.sizeDelta = new Vector2(80f, 80f);
+            var avImg = avatar.gameObject.AddComponent<Image>();
+            avImg.sprite = _knobSprite != null ? _knobSprite : _uiSprite;
+            avImg.color = new Color(0.20f, 0.45f, 0.65f, 0.65f);
+            var avOutline = avatar.gameObject.AddComponent<Outline>();
+            avOutline.effectColor = new Color(Accent.r, Accent.g, Accent.b, 0.8f);
+            avOutline.effectDistance = new Vector2(2f, -2f);
+            var avShadow = avatar.gameObject.AddComponent<Shadow>();
+            avShadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
+            avShadow.effectDistance = new Vector2(0f, -5f);
+            var avBtn = avatar.gameObject.AddComponent<Button>();
+            avBtn.targetGraphic = avImg;
+            var avColors = avBtn.colors;
+            avColors.highlightedColor = new Color(0.45f, 0.75f, 0.95f, 0.85f);
+            avColors.pressedColor = new Color(0.60f, 0.90f, 1f, 0.95f);
+            avBtn.colors = avColors;
+            UnityEventTools.AddPersistentListener(avBtn.onClick, chat.ToggleChat);
+            MakeText(avatar, "Face", "RICK", 15, FontStyle.Bold, TextAnchor.MiddleCenter,
+                Color.white, Vector2.zero, avatar.sizeDelta)
+                .transform.parent.GetComponent<RectTransform>();
+
             UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
         }
 
@@ -916,17 +941,20 @@ namespace Project8.EditorTools
             director.voice = voice;
             director.cockpit = ship.GetComponent<CockpitControls>();
 
-            var canvasGO = new GameObject("MissionPanel");
+            // All of Rick's narration now renders as subtitles at the bottom-centre
+            // of the canopy - no more pop-up mission panel. Contextual mission
+            // buttons live on the same strip, shown only when the story needs them.
+            var canvasGO = new GameObject("SubtitleBar");
             var canvas = canvasGO.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvasGO.AddComponent<GraphicRaycaster>();
             AddComponentByNames(canvasGO,
                 "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
             var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(900f, 480f);
+            rt.sizeDelta = new Vector2(1050f, 210f);
             canvasGO.transform.SetParent(ship, true);
-            canvasGO.transform.localPosition = new Vector3(0.12f, 1.44f, 1.14f);
-            canvasGO.transform.localScale = Vector3.one * 0.00125f;
+            canvasGO.transform.localPosition = new Vector3(0f, 0.70f, 1.18f);
+            canvasGO.transform.localScale = Vector3.one * 0.0011f;
             canvasGO.transform.rotation =
                 Quaternion.LookRotation((canvasGO.transform.position - eye).normalized, Vector3.up);
 
@@ -937,18 +965,16 @@ namespace Project8.EditorTools
             bgImg.type = Image.Type.Sliced;
             StylePanel(bgImg);
 
-            MakeText(rt, "Title", "MISSION", 25, FontStyle.Bold, TextAnchor.MiddleLeft,
-                Accent, new Vector2(-300f, 180f), new Vector2(300f, 40f));
-            director.narrationText = MakeText(rt, "Narration", "", 20, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.9f, 0.94f, 1f),
-                new Vector2(0f, 25f), new Vector2(810f, 230f));
+            director.narrationText = MakeText(rt, "Narration", "", 19, FontStyle.Normal,
+                TextAnchor.MiddleCenter, new Color(0.9f, 0.94f, 1f),
+                new Vector2(0f, 40f), new Vector2(990f, 110f));
 
             director.startButton = MissionButton(rt, "Btn_Start", "START MISSION",
-                new Vector2(0f, -165f), 300f, director.StartMission);
+                new Vector2(0f, -62f), 300f, director.StartMission);
             director.continueButton = MissionButton(rt, "Btn_Continue", "CONTINUE",
-                new Vector2(0f, -165f), 300f, director.ContinueMission);
+                new Vector2(0f, -62f), 300f, director.ContinueMission);
             director.restartButton = MissionButton(rt, "Btn_Restart", "RESTART MISSION",
-                new Vector2(0f, -165f), 300f, director.RestartMission);
+                new Vector2(0f, -62f), 300f, director.RestartMission);
             director.continueButton.gameObject.SetActive(false);
             director.restartButton.gameObject.SetActive(false);
             return director;
