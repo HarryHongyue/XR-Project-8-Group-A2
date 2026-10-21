@@ -93,8 +93,11 @@ namespace Project8.Interaction
                 seatedCamera.transform.localPosition = Vector3.zero;
                 seatedCamera.transform.localRotation = Quaternion.identity;
             }
-            if (xrInputModule != null) xrInputModule.enabled = !_desktop;
-            if (desktopInputModule != null) desktopInputModule.enabled = _desktop;
+            // XRUIInputModule handles EVERY pointer source - mouse, touch, pen and
+            // the XR ray interactors - so it stays enabled in both modes and the
+            // panels remain clickable on the mirrored desktop view during VR runs.
+            if (xrInputModule != null) xrInputModule.enabled = true;
+            if (desktopInputModule != null) desktopInputModule.enabled = false;
             if (_deviceSim != null) _deviceSim.SetActive(_desktop);
         }
 
