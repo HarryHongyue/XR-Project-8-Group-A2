@@ -43,13 +43,10 @@ namespace Project8.Evaluation
             float t = simulation.SimulationTime;
             TestMass best = null;
             float bestTau = float.MaxValue;
-            Vector3 d = model.PropagationDirection;
-            float v = Mathf.Max(model.parameters.visualizationSpeedMps, 1e-4f);
             foreach (var m in field.Masses)
             {
                 Vector3 worldRest = field.transform.TransformPoint(m.RestLocalPosition);
-                float s = Vector3.Dot(worldRest - model.Origin, d);
-                float tau = t - s / v;
+                float tau = model.RetardedTime(worldRest, t);
                 float timeToHit = -tau; // how long until the front reaches this mass
                 if (timeToHit > 0f && timeToHit < bestTau) { bestTau = timeToHit; best = m; }
             }

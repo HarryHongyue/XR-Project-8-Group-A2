@@ -173,11 +173,9 @@ namespace Project8.Interaction
             var keys = Keyboard.current;
             if (keys.mKey.wasPressedThisFrame) TogglePanel();
             if (keys.escapeKey.wasPressedThisFrame) ClosePanels();
+            // Desktop Enter advances the story only - it never opens panels.
             if (keys.enterKey.wasPressedThisFrame && story != null)
-            {
-                if (_drawer != Drawer.Secondary) ShowMission();
                 story.Advance();
-            }
             bool piloting = _drawer == Drawer.None && (story == null || story.CanPilot);
             if (piloting)
             {

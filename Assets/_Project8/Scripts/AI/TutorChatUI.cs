@@ -14,7 +14,10 @@ namespace Project8.AI
     {
         public AITutor tutor;
         public InputField questionInput;
+        [Tooltip("Legacy answer widget - unused now that answers go to subtitles.")]
         public Text answerText;
+        [Tooltip("Shared subtitle presenter: answers and thinking state appear here.")]
+        public RickSubtitles subtitles;
         public RickVoice voice;
         [Header("Avatar + voice")]
         public GameObject chatWindow;
@@ -150,15 +153,25 @@ namespace Project8.AI
 
         public void ShowAnswer(string answer)
         {
-            SetAnswer((ExperienceSettings.IsChinese ? "Rick：" : "Rick: ") + answer);
+            // The finished utterance is spoken exactly once - the "thinking"
+            // placeholder above never reaches the voice.
+            SetAnswer((ExperienceSettings.IsChinese ? "Rick：" : "Rick: ") + answer,
+                answer);
         }
 
-        void SetAnswer(string s)
+        void SetAnswer(string s, string voiceText = null)
         {
-            if (answerText == null) return;
-            if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(answerText);
-            answerText.text = s;
-            if (voice != null) voice.Speak(s);
+            // Answers and the thinking state arrive through the shared subtitle
+            // presenter, which also owns the voice so each utterance is spoken
+            // once; the composer itself holds no answer widget.
+            if (subtitles != null) { subtitles.ShowAnswer(s, voiceText); return; }
+            if (answerText != null)
+            {
+                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(answerText);
+                answerText.text = s;
+            }
+            if (voice != null && !string.IsNullOrEmpty(voiceText))
+                voice.Speak(voiceText);
         }
     }
 }

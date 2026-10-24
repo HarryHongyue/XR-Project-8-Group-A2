@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using Project8.Core;
 using Project8.Perspective;
+using Project8.Story;
 
 namespace Project8.UI
 {
@@ -18,6 +19,7 @@ namespace Project8.UI
         public GravitationalWaveModel model;
         public SimulationParameters parameters;
         public PerspectiveController perspective;
+        public StoryDirector story;
 
         [Header("Widgets (assigned by the scene builder)")]
         public Text statusText;
@@ -25,6 +27,8 @@ namespace Project8.UI
         public Text frequencyValueText;
         public Text playPauseButtonText;
         public Text perspectiveButtonText;
+        public Button replayButton;
+        public Button resetButton;
         public Slider amplitudeSlider;
         public Slider frequencySlider;
         public Slider exaggerationSlider;
@@ -44,10 +48,25 @@ namespace Project8.UI
         }
 
         // --- Button handlers -------------------------------------------------
-        public void OnPlayPause() => simulation.TogglePlayPause();
-        public void OnReplay() => simulation.Replay();
-        public void OnReset() => simulation.ResetSimulation();
+        // Transport delegates through the story so preview/mission semantics stay
+        // identical for the drawer and the persistent PlaybackDock alike.
+        public void OnPlayPause()
+        {
+            if (story != null) story.TogglePlayback();
+            else simulation.TogglePlayPause();
+        }
+        public void OnReplay()
+        {
+            if (story != null) story.ReplayCurrentWave();
+            else simulation.Replay();
+        }
+        public void OnReset()
+        {
+            if (story != null) story.ResetCurrentWave();
+            else simulation.ResetSimulation();
+        }
         public void OnSpeedQuarter() => simulation.SetSpeedQuarter();
+        public void OnSpeedHalf() => simulation.SetSpeedHalf();
         public void OnSpeedNormal() => simulation.SetSpeedNormal();
         public void OnTogglePerspective() => perspective.TogglePerspective();
 
@@ -110,14 +129,21 @@ namespace Project8.UI
             _refreshing = false;
         }
 
+        /// <summary>Replay/Reset only make sense at a stable observation phase -
+        /// mid-transit they stay disabled so a preview can never freeze the
+        /// journey. Kept per-frame so the buttons track the mission phase.</summary>
+        public void RefreshInteractables()
+        {
+            bool can = story == null || story.CanPreview;
+            if (replayButton != null) replayButton.interactable = can;
+            if (resetButton != null) resetButton.interactable = can;
+        }
+
         void Update()
         {
+            RefreshInteractables();
             bool chinese = ExperienceSettings.IsChinese;
             bool dutch = ExperienceSettings.IsDutch;
-            if (playPauseButtonText != null)
-                playPauseButtonText.text = simulation.IsPlaying
-                    ? (chinese ? "暂停" : dutch ? "Pauze" : "Pause")
-                    : (chinese ? "播放" : dutch ? "Afspelen" : "Play");
             if (perspectiveButtonText != null)
                 perspectiveButtonText.text = perspective.Mode == PerspectiveMode.Observer
                     ? (chinese ? "跟随引力波" : dutch ? "Surfen op de golf" : "Ride with the wave")

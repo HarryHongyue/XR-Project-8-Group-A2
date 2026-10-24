@@ -41,9 +41,10 @@ namespace Project8.Core
         [Tooltip("Chirp mode: exponential ringdown decay time after the merger peak, in seconds.")]
         [Min(0.2f)] public float ringdownSeconds = 3f;
 
-        [Tooltip("Chirp mode: fraction of peak amplitude that keeps oscillating after the " +
-                 "ringdown decays. STYLIZED - real ringdowns fade to zero; this residual " +
-                 "keeps the waves visibly moving so the scene keeps demonstrating strain.")]
+        [Tooltip("Chirp mode (planar propagation only): fraction of peak amplitude that keeps " +
+                 "oscillating after the ringdown decays. STYLIZED - real ringdowns fade to zero; " +
+                 "this residual keeps the waves visibly moving so the scene keeps demonstrating " +
+                 "strain. Ignored by radial propagation, whose ringdown truly returns to zero.")]
         [Range(0f, 0.5f)] public float postMergerResidual = 0.22f;
 
         [Header("Visualization choices (explicitly NOT physical)")]

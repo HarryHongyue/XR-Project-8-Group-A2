@@ -72,7 +72,10 @@ namespace Project8.Visualization
             if (testMassPrefab == null || model == null) return;
             _axis = model.parameters.propagationAxis;
 
-            model.GetTransverseAxes(out Vector3 u1, out Vector3 u2);
+            // Transverse axes at the FIELD centre - position-aware so radial
+            // propagation lays the ring out perpendicular to the local wave
+            // direction, not the shared teaching axis.
+            model.GetTransverseAxes(transform.position, out Vector3 u1, out Vector3 u2);
             // transverse axes are world-space; convert into field-local directions
             Vector3 l1 = transform.InverseTransformDirection(u1);
             Vector3 l2 = transform.InverseTransformDirection(u2);
@@ -90,7 +93,8 @@ namespace Project8.Visualization
             {
                 float half = (gridSize - 1) * 0.5f * gridSpacing;
                 int layers = layout == FieldLayout.Volume ? depthCount : 1;
-                Vector3 depth = transform.InverseTransformDirection(model.PropagationDirection);
+                Vector3 depth = transform.InverseTransformDirection(
+                    model.PropagationDirectionAt(transform.position));
                 for (int iz = 0; iz < layers; iz++)
                 for (int ix = 0; ix < gridSize; ix++)
                 for (int iy = 0; iy < gridSize; iy++)
@@ -116,7 +120,10 @@ namespace Project8.Visualization
             {
                 Vector3 worldRest = transform.TransformPoint(mass.RestLocalPosition);
                 float h = model.StrainAt(worldRest, t);
-                Vector3 worldDisp = model.DisplacementAt(worldRest, t);
+                // Reference-centred displacement: the basis lives at the field
+                // centre so ring masses actually move under radial propagation
+                // (their own radial direction is parallel to their offset).
+                Vector3 worldDisp = model.DisplacementAt(worldRest, t, transform.position);
                 Vector3 localDisp = transform.InverseTransformDirection(worldDisp);
                 mass.ApplyStrain(localDisp, h, stretchColor, squeezeColor, colorizeByStrain);
             }

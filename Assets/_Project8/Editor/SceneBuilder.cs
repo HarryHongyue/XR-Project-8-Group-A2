@@ -29,7 +29,7 @@ namespace Project8.EditorTools
     ///   -executeMethod Project8.EditorTools.SceneBuilder.BuildAll
     /// or manually via the menu item "Project 8/Build Demo Scene".
     /// </summary>
-    public static class SceneBuilder
+    public static partial class SceneBuilder
     {
         const string Root = "Assets/_Project8";
 
@@ -38,39 +38,21 @@ namespace Project8.EditorTools
         static Sprite _knobSprite;
 
         // ---- liquid-glass UI palette -------------------------------------------
-        static readonly Color PanelGlass  = new Color(0.09f, 0.14f, 0.24f, 0.40f);
         static readonly Color Accent      = new Color(0.50f, 0.90f, 1f);
-        static readonly Color ButtonFill  = new Color(0.35f, 0.55f, 0.78f, 0.30f);
-        static readonly Color ButtonHover = new Color(0.50f, 0.75f, 0.95f, 0.55f);
-        static readonly Color ButtonDown  = new Color(0.60f, 0.90f, 1f, 0.80f);
-        static readonly Color WellFill    = new Color(0.04f, 0.07f, 0.12f, 0.60f);
-
-        /// <summary>Liquid-glass look: a translucent blue-tinted fill, a faint rim
-        /// of light around the panel, a soft drop shadow and a thin accent strip
-        /// along the top edge.</summary>
-        static void StylePanel(Image bg)
-        {
-            bg.color = PanelGlass;
-            var shadow = bg.gameObject.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0f, 0f, 0f, 0.55f);
-            shadow.effectDistance = new Vector2(0f, -12f);
-            var rim = bg.gameObject.AddComponent<Outline>();
-            rim.effectColor = new Color(Accent.r, Accent.g, Accent.b, 0.35f);
-            rim.effectDistance = new Vector2(1.5f, -1.5f);
-            var strip = NewUIObject("TopAccent", bg.transform);
-            strip.anchorMin = new Vector2(0f, 1f);
-            strip.anchorMax = new Vector2(1f, 1f);
-            strip.pivot = new Vector2(0.5f, 1f);
-            strip.sizeDelta = new Vector2(0f, 4f);
-            strip.anchoredPosition = Vector2.zero;
-            var stripImg = strip.gameObject.AddComponent<Image>();
-            stripImg.raycastTarget = false;
-            stripImg.color = new Color(Accent.r, Accent.g, Accent.b, 0.85f);
-        }
 
         [MenuItem("Project 8/Build Demo Scene")]
         public static void BuildAll()
         {
+            // The build replaces all open scenes via NewScene(Single) - never
+            // silently discard the user's unsaved scene work. In batch mode the
+            // prompt auto-saves; Cancel aborts the whole build before any
+            // NewScene runs. (No duplicate prompt: nothing dirty -> no dialog.)
+            if (!Application.isBatchMode &&
+                !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                Debug.LogWarning("[Project8] Build aborted: scene save cancelled.");
+                return;
+            }
             try
             {
                 LoadBuiltins();
@@ -87,8 +69,6 @@ namespace Project8.EditorTools
                     new EditorBuildSettingsScene($"{Root}/Scenes/Welcome.unity", true),
                     new EditorBuildSettingsScene($"{Root}/Scenes/Main.unity", true),
                 };
-                AssetDatabase.DeleteAsset($"{Root}/Scenes/WaveLab.unity");
-                AssetDatabase.DeleteAsset($"{Root}/Settings/SimulationParameters_Lab.asset");
                 ConfigureOpenXRLoader();
                 PlayerSettings.colorSpace = ColorSpace.Linear;
                 PlayerSettings.productName = "Project 08 - Surfing a Gravitational Wave";
@@ -100,6 +80,7 @@ namespace Project8.EditorTools
             {
                 Debug.LogError($"[Project8] Build failed: {e}");
                 if (Application.isBatchMode) EditorApplication.Exit(1);
+                else throw; // interactive callers (VisualFixRunner) must see the failure
             }
         }
 
@@ -130,6 +111,14 @@ namespace Project8.EditorTools
                 if (sheet == null || sheet.wells == null || sheet.wells.Length == 0 ||
                     sheet.sheetMaterial == null)
                     throw new InvalidOperationException($"{sceneName}: incomplete spacetime sheet");
+                if (objects.Any(t => t.name == "AtmosphereGlow"))
+                    throw new InvalidOperationException(
+                        $"{sceneName}: occluding atmosphere shell must not be generated");
+                var ifo = objects.Select(t => t.GetComponent<LaserInterferometer>())
+                    .FirstOrDefault(component => component != null);
+                if (ifo == null || ifo.mirrorA == null || ifo.mirrorB == null ||
+                    ifo.outputBeam == null || ifo.photodetector == null)
+                    throw new InvalidOperationException($"{sceneName}: incomplete interferometer");
                 var origin = objects.Select(t => t.GetComponent<Unity.XR.CoreUtils.XROrigin>())
                     .FirstOrDefault(component => component != null);
                 if (origin == null || !origin.name.Contains("XR Rig") || origin.Camera == null)
@@ -190,18 +179,31 @@ namespace Project8.EditorTools
             var sheet = UnityEngine.Object.FindAnyObjectByType<SpacetimeSheet>();
             var mesh = sheet != null ? sheet.GetComponent<MeshFilter>().sharedMesh : null;
             var stars = GameObject.Find("Starfield")?.GetComponent<ParticleSystem>();
+            var waveModel = UnityEngine.Object.FindAnyObjectByType<GravitationalWaveModel>();
+            var ifo = UnityEngine.Object.FindAnyObjectByType<LaserInterferometer>();
+            // Physics regression spot-checks at t = 0: radial emission must not have
+            // started (emissionDelay = inspiral), so strain is zero everywhere and
+            // the dark port sits dark; no occluding atmosphere shell may exist.
+            var earthGO = GameObject.Find("Earth");
+            bool physicsOk = waveModel != null && waveModel.radialPropagation &&
+                waveModel.emissionDelay > 0f && earthGO != null &&
+                waveModel.StrainAt(earthGO.transform.position, 0f) == 0f &&
+                ifo != null && ifo.mirrorA != null && ifo.mirrorB != null &&
+                Mathf.Approximately(ifo.DarkPortIntensity, 0f) &&
+                GameObject.Find("AtmosphereGlow") == null;
             bool ready = mesh != null && mesh.vertexCount >= 2000 &&
-                         stars != null && stars.particleCount >= 500;
+                         stars != null && stars.particleCount >= 500 && physicsOk;
             if (!ready)
             {
                 // Play-mode startup in batch mode is slow; keep polling until the deadline.
                 if (elapsed < 25d) return;
                 EditorApplication.update -= CheckSmokeScene;
                 SessionState.SetBool(SmokeSessionKey, false);
-                Debug.LogError("[Project8] Play smoke failed: spacetime sheet or textured " +
-                               "stars did not animate in Play mode within 25s " +
+                Debug.LogError("[Project8] Play smoke failed: spacetime sheet, textured " +
+                               "stars or physics checks did not report within 25s " +
                                $"(mesh={(mesh != null ? mesh.vertexCount : -1)}, " +
-                               $"stars={(stars != null ? stars.particleCount : -1)})");
+                               $"stars={(stars != null ? stars.particleCount : -1)}, " +
+                               $"physicsOk={physicsOk})");
                 EditorApplication.Exit(1);
                 return;
             }
@@ -226,6 +228,8 @@ namespace Project8.EditorTools
                                          "Materials", "Settings", "Audio", "Documentation" })
                 if (!AssetDatabase.IsValidFolder($"{Root}/{leaf}"))
                     AssetDatabase.CreateFolder(Root, leaf);
+            if (!AssetDatabase.IsValidFolder($"{Root}/Materials/UI"))
+                AssetDatabase.CreateFolder($"{Root}/Materials", "UI");
         }
 
         // ------------------------------------------------------------------ assets
@@ -234,6 +238,7 @@ namespace Project8.EditorTools
             public Material TestMass, Handle;
             public Material Hull, HullDark, Console, Glass, EngineGlow;
             public Material NetLine, BlackHole, Accretion, AccretionGlow, Planet, StarGlow, Laser;
+            public Material ReturnBeam;
         }
 
         static Mats CreateMaterials()
@@ -283,6 +288,10 @@ namespace Project8.EditorTools
             }
             m.Laser = MakeMaterial("M_Laser", "Legacy Shaders/Particles/Additive", Color.white);
             m.Laser.SetColor("_TintColor", new Color(1f, 0.1f, 0.1f, 0.8f));
+            // Return path of the interferometer beams: cyan, so outbound vs inbound
+            // light stays visually distinct.
+            m.ReturnBeam = MakeMaterial("M_ReturnBeam", "Legacy Shaders/Particles/Additive", Color.white);
+            m.ReturnBeam.SetColor("_TintColor", new Color(0.25f, 0.9f, 1f, 0.8f));
             return m;
         }
 
@@ -372,6 +381,21 @@ namespace Project8.EditorTools
                   "The web of spheres in front of the ship is a lattice of test masses. As " +
                   "the wavefront sweeps through it you can see the links stretch and squeeze " +
                   "alternately - that is how a detector 'sees' a gravitational wave."),
+                E(new[]{"einstein","telescope","et ","triangle","detector","interferometer","ligo"},
+                  "The triangular facility at the end of the mission is the Einstein " +
+                  "Telescope model: three interferometers in an equilateral triangle, each " +
+                  "station's arms at 60 degrees, and each station nesting a low- and a " +
+                  "high-frequency instrument - the real 2020 design baseline. Like LIGO's " +
+                  "Michelsons it splits laser light, sends it down two arms and recombines " +
+                  "it at the splitter; a wave shifts each round trip differently so the " +
+                  "dark ports read differently. Our model shows the principle only - no " +
+                  "cavities, suspensions or noise curves."),
+                E(new[]{"lf","hf","low frequency","high frequency","lane","xylophone"},
+                  "Each ET corner station actually hosts TWO interferometers: one " +
+                  "cryogenic low-frequency instrument and one high-frequency instrument - " +
+                  "the 'xylophone' layout. In this app the two lanes are drawn separately " +
+                  "but share one simplified strain response; the real instruments cover " +
+                  "different frequency bands with different noise curves."),
 
                 E(new[]{"strain","delta l","relative change"},
                   "Strain h = deltaL / L is the relative change in separation between two free " +
@@ -478,7 +502,9 @@ namespace Project8.EditorTools
             cockpit.desktopInputModule.enabled = false;
 
             var panel = new GameObject("WelcomePanel");
-            panel.AddComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+            var wcanvas = panel.AddComponent<Canvas>();
+            wcanvas.renderMode = RenderMode.WorldSpace;
+            wcanvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1;
             panel.AddComponent<GraphicRaycaster>();
             AddComponentByNames(panel,
                 "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
@@ -488,12 +514,8 @@ namespace Project8.EditorTools
             rt.localPosition = new Vector3(0f, 1.4f, 1.12f);
             rt.localScale = Vector3.one * 0.0012f;
             rt.rotation = Quaternion.LookRotation(rt.position - camera.transform.position, Vector3.up);
-            var bg = NewUIObject("Background", rt);
-            Stretch(bg);
-            var img = bg.gameObject.AddComponent<Image>();
-            img.sprite = _uiSprite;
-            img.type = Image.Type.Sliced;
-            StylePanel(img);
+            PanelHitArea(rt);
+            GlassBG(rt, GlassRole.Panel, GlassPanelTint);
             var settings = panel.AddComponent<ExperienceSettings>();
             MakeText(rt, "WelcomeTitle", "SURFING A GRAVITATIONAL WAVE", 32, FontStyle.Bold,
                 TextAnchor.MiddleCenter, Color.white, new Vector2(0f, 235f), new Vector2(920f, 50f));
@@ -525,11 +547,13 @@ namespace Project8.EditorTools
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             Vector3 seatPos = new Vector3(0f, 0f, -0.15f);
             Vector3 eye = seatPos + new Vector3(0f, 1.25f, 0f);
-            // Side-on viewing geometry: the binary sits left-front, the wave travels
-            // +X laterally across the view, and Earth is ~45 degrees to the right.
-            // The 68 m baseline gives the slowed wave ~21 s of visible travel time.
-            Vector3 binaryPos = new Vector3(-16f, 1.8f, 22f);
-            Vector3 earthPos = new Vector3(52f, -4f, 22f);
+            // Side-on viewing geometry: the binary sits left-front, the wave radiates
+            // outward (+X dominates) across the view, Earth is ~45 degrees to the right
+            // and the Michelson detector lies beyond it. The binary is sunk to y=-3.8 so
+            // the sheet's deepest trough (-5.5) bites into the holes' lower halves; Earth
+            // floats at y=6.8 so its bottom (-0.2) just touches the shallow sheet dent.
+            Vector3 binaryPos = new Vector3(-16f, -3.8f, 22f);
+            Vector3 earthPos = new Vector3(52f, 6.8f, 22f);
 
             // --- space environment --------------------------------------------
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
@@ -554,6 +578,12 @@ namespace Project8.EditorTools
             simGO.AddComponent<EntryGate>();
             var model = simGO.AddComponent<GravitationalWaveModel>();
             model.parameters = parameters;
+            // Concentric emission from the binary, born at the merger flash: nothing
+            // exists anywhere before t = inspiralDurationSeconds (inspiral radiation
+            // intentionally excluded - see Documentation/PhysicsModel.md). The fixed
+            // +X axis is kept for the scripted ride choreography.
+            model.radialPropagation = true;
+            model.emissionDelay = parameters.inspiralDurationSeconds;
             var controller = simGO.AddComponent<SimulationController>();
             controller.parameters = parameters;
 
@@ -597,13 +627,16 @@ namespace Project8.EditorTools
             sheetGO.transform.position = new Vector3(18f, 0f, 22f);
             sheet.sheetMaterial = MakeMaterial("M_SpacetimeSheet", "Project8/SpacetimeSheet", Color.white);
             sheet.size = new Vector2(160f, 78f);
-            sheet.baseHeight = -1.6f;
-            sheet.flexibility = 1.35f;
+            // Flat rest surface at y=1.5: the 7 m wells under the 1.9 m-radius holes
+            // bottom out at -5.5 (into their lower halves), Earth's 1.7 m dent
+            // reaches -0.2 - exactly the planet's underside.
+            sheet.baseHeight = 1.5f;
+            sheet.flexibility = 1f;
             sheet.wells = new[]
             {
-                new SpacetimeSheet.GravityWell { source = binary.blackHoleA, depth = 7f, radius = 4.5f },
-                new SpacetimeSheet.GravityWell { source = binary.blackHoleB, depth = 7f, radius = 4.5f },
-                new SpacetimeSheet.GravityWell { source = binary.mergedHole, depth = 7f, radius = 5.5f },
+                new SpacetimeSheet.GravityWell { source = binary.blackHoleA, depth = 7f, radius = 3f },
+                new SpacetimeSheet.GravityWell { source = binary.blackHoleB, depth = 7f, radius = 3f },
+                new SpacetimeSheet.GravityWell { source = binary.mergedHole, depth = 7f, radius = 4f },
                 new SpacetimeSheet.GravityWell { source = earth.transform, depth = 1.7f, radius = 8f },
             };
 
@@ -674,28 +707,33 @@ namespace Project8.EditorTools
             task.model = model;
             task.simulation = controller;
 
-            // --- console UI: ONE merged control panel + mission panel on the rail --
-            // Everything (transport, sliders, wave slots, interferometer hint, Rick Q&A)
-            // lives in the single ControlPanel; the Mission panel sits beside it on the
-            // left rail. Both tabs stay available for the whole experience.
+            // --- the Einstein Telescope observatory -------------------------------
+            // Horizontal equilateral triangle of three 60-degree stations, each
+            // hosting a nested LF/HF lane pair (2020 design baseline). It sits
+            // beyond Earth on the wave line - the mission's final stop.
             // Panels face the eye in WORLD space - the ship no longer sits at the origin.
             Vector3 eyeWorld = ship.transform.TransformPoint(eye);
-            var panel = BuildControlPanel(ship.transform, eyeWorld, controller, model,
-                parameters, perspective, task, tutor, voice);
-            cockpit.controlPanel = panel.gameObject;
-            // The LIGO model sits far beyond Earth on the wave line - the last stop
-            // of the mission is watching its laser arms deform.
-            var ligo = BuildInterferometer(mats, model, controller, new Vector3(72f, 0.8f, 22f));
-            ligo.localScale = Vector3.one * 1.6f;
-            cockpit.story = BuildMissionPanel(ship.transform, eyeWorld, controller, model,
-                earth.transform, binary.transform, ligo, tutor, voice);
-            cockpit.secondaryPanel = cockpit.story.narrationText.GetComponentInParent<Canvas>().gameObject;
+            var et = BuildEinsteinTelescope(mats, model, controller,
+                new Vector3(82f, 1.5f, 26f), eyeWorld);
 
-            task.ui = panel;
+            // --- cockpit UI -------------------------------------------------------
+            // One shared subtitle strip (story narration + Rick's answers), a
+            // persistent Play/Pause dock, the mission action dock, and separate
+            // drawers: CONTROLS (wave shape, slots, transport, ET inspector) and
+            // MISSION & HELP (the honest-limits disclosure). No floating prose
+            // labels anywhere in the world.
+            var subtitles = BuildSubtitleCanvas(ship.transform, eyeWorld);
+            var story = BuildStoryDirector(ship.transform, eyeWorld, controller, model,
+                earth.transform, binary.transform, et.transform, voice, subtitles);
+            cockpit.story = story;
+            var panel = BuildControlPanel(ship.transform, eyeWorld, controller, model,
+                parameters, perspective, task, tutor, voice, et, story);
+            cockpit.controlPanel = panel.gameObject;
+            cockpit.secondaryPanel = BuildMissionHelp(ship.transform, eyeWorld, cockpit);
+            BuildPlaybackDock(ship.transform, eyeWorld, controller, story);
             cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eyeWorld);
-            // Rick rides as a small avatar in the lower-right; clicking it opens
-            // the chat window instead of leaving a bubble up permanently.
-            BuildRickAvatar(ship.transform, eyeWorld, tutor, voice);
+            BuildRickAvatar(ship.transform, eyeWorld, tutor, voice, subtitles);
+            task.ui = panel;
             panel.gameObject.SetActive(false);
             cockpit.secondaryPanel.SetActive(false);
 
@@ -748,12 +786,8 @@ namespace Project8.EditorTools
             e.transform.localScale = Vector3.one * radius * 2f;
             e.GetComponent<Renderer>().sharedMaterial = CreateEarthMaterial();
             KillCollider(e);
-            var atmo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            atmo.name = "AtmosphereGlow";
-            atmo.transform.SetParent(e.transform, false);
-            atmo.transform.localScale = Vector3.one * 1.07f;
-            atmo.GetComponent<Renderer>().sharedMaterial = mats.NetLine;
-            KillCollider(atmo);
+            // No atmosphere shell: the previous additive "glow" sphere rendered as
+            // an opaque shroud that hid the whole Blue Marble surface.
             var d = e.AddComponent<EarthDeformer>();
             d.visualGain = 0.35f;
             return e.transform;
@@ -762,363 +796,62 @@ namespace Project8.EditorTools
         static Material CreateEarthMaterial()
         {
             const string path = Root + "/Materials/M_Earth.mat";
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null) return existing;
+            const string texPath = Root + "/Textures/Earth/earth-blue-marble.jpg";
             // NASA Blue Marble imagery (public domain) via the three.js examples repo.
-            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                $"{Root}/Textures/Earth/earth-blue-marble.jpg");
-            var mat = new Material(Shader.Find("Standard")) { name = "M_Earth" };
+            // 2:1 equirectangular map: longitude wraps, latitude clamps.
+            var importer = AssetImporter.GetAtPath(texPath) as TextureImporter;
+            if (importer != null && (importer.wrapModeU != TextureWrapMode.Repeat ||
+                                     importer.wrapModeV != TextureWrapMode.Clamp))
+            {
+                importer.wrapModeU = TextureWrapMode.Repeat;
+                importer.wrapModeV = TextureWrapMode.Clamp;
+                importer.SaveAndReimport();
+            }
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat == null)
+            {
+                mat = new Material(Shader.Find("Project8/EarthSurface")) { name = "M_Earth" };
+                AssetDatabase.CreateAsset(mat, path);
+            }
+            // Update the EXISTING material in place: matte diffuse shader, full-globe
+            // UVs (tiling 1, offset 0), no specular/emission.
+            var shader = Shader.Find("Project8/EarthSurface");
+            if (shader != null && mat.shader != shader) mat.shader = shader;
             if (tex != null) mat.mainTexture = tex;
             else mat.color = new Color(0.15f, 0.35f, 0.75f); // fallback ocean blue
-            mat.SetFloat("_Glossiness", 0.25f);
-            AssetDatabase.CreateAsset(mat, path);
+            mat.mainTextureScale = Vector2.one;
+            mat.mainTextureOffset = Vector2.zero;
+            if (mat.HasProperty("_AmbientFloor")) mat.SetFloat("_AmbientFloor", 0.45f);
+            EditorUtility.SetDirty(mat);
             return mat;
         }
 
-        // ------------------------------------------------------------- interferometer
-        static Transform BuildInterferometer(Mats mats, GravitationalWaveModel model,
-                                        SimulationController sim, Vector3 pos)
+        static Transform MakeLightMarker(Transform parent, string name, Mats mats)
         {
-            var root = new GameObject("Interferometer (LIGO-style)");
-            root.transform.position = pos;
-            const float armLen = 1.9f;
-            MakeBox(root.transform, "BeamSplitter", Vector3.zero,
-                new Vector3(0.16f, 0.16f, 0.16f), mats.Console);
-            MakeBox(root.transform, "MirrorX", new Vector3(armLen, 0f, 0f),
-                new Vector3(0.07f, 0.24f, 0.07f), mats.Hull);
-            MakeBox(root.transform, "MirrorZ", new Vector3(0f, 0f, armLen),
-                new Vector3(0.07f, 0.24f, 0.07f), mats.Hull);
-            MakeBox(root.transform, "RailX", new Vector3(armLen * 0.5f, -0.12f, 0f),
-                new Vector3(armLen, 0.04f, 0.06f), mats.HullDark);
-            MakeBox(root.transform, "RailZ", new Vector3(0f, -0.12f, armLen * 0.5f),
-                new Vector3(0.06f, 0.04f, armLen), mats.HullDark);
-
-            var armA = MakeLaserArm(root.transform, "LaserX", new Vector3(armLen, 0f, 0f), mats);
-            var armB = MakeLaserArm(root.transform, "LaserZ", new Vector3(0f, 0f, armLen), mats);
-            var li = root.AddComponent<LaserInterferometer>();
-            li.model = model;
-            li.simulation = sim;
-            li.armA = armA;
-            li.armB = armB;
-            return root.transform;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localScale = Vector3.one * 0.16f;
+            go.GetComponent<Renderer>().sharedMaterial = mats.EngineGlow;
+            KillCollider(go);
+            return go.transform;
         }
 
-        static LineRenderer MakeLaserArm(Transform parent, string name, Vector3 end, Mats mats)
+        static LineRenderer MakeBeam(Transform parent, string name, Vector3 a, Vector3 b,
+                                     Material mat, float width)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.positionCount = 2;
-            lr.SetPosition(0, Vector3.zero);
-            lr.SetPosition(1, end);
-            lr.widthMultiplier = 0.02f;
-            lr.startColor = lr.endColor = new Color(1f, 0.12f, 0.12f, 0.9f);
-            lr.material = mats.Laser;
+            lr.SetPosition(0, a);
+            lr.SetPosition(1, b);
+            lr.widthMultiplier = width;
+            lr.sharedMaterial = mat;
             lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             return lr;
-        }
-
-        static GameObject BuildCompactPanel(Transform ship, CockpitControls cockpit, Vector3 eye)
-        {
-            var go = new GameObject("MenuRail");
-            var canvas = go.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            go.AddComponent<GraphicRaycaster>();
-            AddComponentByNames(go,
-                "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
-            var rt = (RectTransform)go.transform;
-            rt.sizeDelta = new Vector2(250f, 170f);
-            rt.SetParent(ship, false);
-            rt.localPosition = new Vector3(-0.72f, 1.43f, 0.98f);
-            rt.localScale = Vector3.one * 0.00115f;
-            rt.rotation = Quaternion.LookRotation((rt.position - eye).normalized, Vector3.up);
-            var railBg = NewUIObject("Background", rt);
-            Stretch(railBg);
-            var railImg = railBg.gameObject.AddComponent<Image>();
-            railImg.sprite = _uiSprite;
-            railImg.type = Image.Type.Sliced;
-            railImg.raycastTarget = false;
-            StylePanel(railImg);
-            MakeButton(rt, "Btn_Secondary", "MISSION  <",
-                new Vector2(0f, 48f), 235f, cockpit.ShowMission);
-            MakeButton(rt, "Btn_Controls", "CONTROLS  <",
-                new Vector2(0f, -32f), 235f, cockpit.ShowControls);
-            return go;
-        }
-
-        // --------------------------------------------- Rick avatar + chat window
-        /// <summary>Rick shows up as a small round avatar floating at the lower-right
-        /// of the canopy. Clicking it opens (or closes) the chat window - an input
-        /// row with a voice button at its right edge and the answer text above.</summary>
-        static void BuildRickAvatar(Transform ship, Vector3 eye, AITutor tutor,
-                                    Project8.UI.RickVoice voice)
-        {
-            var canvasGO = new GameObject("RickAvatar");
-            var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvasGO.AddComponent<GraphicRaycaster>();
-            AddComponentByNames(canvasGO,
-                "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
-            var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(480f, 380f);
-            canvasGO.transform.SetParent(ship, true);
-            canvasGO.transform.localPosition = new Vector3(0.60f, 0.88f, 1.02f);
-            canvasGO.transform.localScale = Vector3.one * 0.00105f;
-            canvasGO.transform.rotation =
-                Quaternion.LookRotation((canvasGO.transform.position - eye).normalized, Vector3.up);
-
-            var chat = canvasGO.AddComponent<TutorChatUI>();
-            chat.tutor = tutor;
-            chat.voice = voice;
-
-            // -- collapsible chat window --------------------------------------
-            var window = NewUIObject("ChatWindow", rt);
-            window.anchoredPosition = new Vector2(0f, 40f);
-            window.sizeDelta = new Vector2(460f, 290f);
-            var winImg = window.gameObject.AddComponent<Image>();
-            winImg.sprite = _uiSprite;
-            winImg.type = Image.Type.Sliced;
-            StylePanel(winImg);
-
-            MakeText(window, "Title", "RICK", 16, FontStyle.Bold, TextAnchor.MiddleLeft,
-                Accent, new Vector2(-130f, 118f), new Vector2(160f, 26f));
-            MakeText(window, "Hint", "AI tutor", 13, FontStyle.Italic, TextAnchor.MiddleLeft,
-                new Color(0.7f, 0.75f, 0.85f, 0.9f), new Vector2(30f, 118f), new Vector2(200f, 26f));
-
-            chat.answerText = MakeText(window, "Answer", "", 14, FontStyle.Normal,
-                TextAnchor.UpperLeft, new Color(0.85f, 0.92f, 1f),
-                new Vector2(0f, 30f), new Vector2(420f, 160f));
-            chat.questionInput = MakeInput(window, "AskInput", new Vector2(-65f, -110f),
-                280f, "Ask Rick a question...");
-            var micText = MakeButton(window, "Btn_Mic", "MIC", new Vector2(112f, -110f),
-                56f, chat.ToggleVoiceInput);
-            chat.micButton = micText.transform.parent.GetComponent<Button>();
-            chat.micLabel = micText;
-            MakeButton(window, "Btn_Ask", "ASK", new Vector2(182f, -110f), 86f, chat.Ask);
-            chat.chatWindow = window.gameObject;
-
-            // -- avatar button: round glass chip, always visible ---------------
-            var avatar = NewUIObject("Avatar", rt);
-            avatar.anchoredPosition = new Vector2(175f, -140f);
-            avatar.sizeDelta = new Vector2(80f, 80f);
-            var avImg = avatar.gameObject.AddComponent<Image>();
-            avImg.sprite = _knobSprite != null ? _knobSprite : _uiSprite;
-            avImg.color = new Color(0.20f, 0.45f, 0.65f, 0.65f);
-            var avOutline = avatar.gameObject.AddComponent<Outline>();
-            avOutline.effectColor = new Color(Accent.r, Accent.g, Accent.b, 0.8f);
-            avOutline.effectDistance = new Vector2(2f, -2f);
-            var avShadow = avatar.gameObject.AddComponent<Shadow>();
-            avShadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
-            avShadow.effectDistance = new Vector2(0f, -5f);
-            var avBtn = avatar.gameObject.AddComponent<Button>();
-            avBtn.targetGraphic = avImg;
-            var avColors = avBtn.colors;
-            avColors.highlightedColor = new Color(0.45f, 0.75f, 0.95f, 0.85f);
-            avColors.pressedColor = new Color(0.60f, 0.90f, 1f, 0.95f);
-            avBtn.colors = avColors;
-            UnityEventTools.AddPersistentListener(avBtn.onClick, chat.ToggleChat);
-            MakeText(avatar, "Face", "RICK", 15, FontStyle.Bold, TextAnchor.MiddleCenter,
-                Color.white, Vector2.zero, avatar.sizeDelta)
-                .transform.parent.GetComponent<RectTransform>();
-
-            UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
-        }
-
-        // ------------------------------------------------------------- mission panel (story)
-        static StoryDirector BuildMissionPanel(Transform ship, Vector3 eye, SimulationController sim,
-                                      GravitationalWaveModel model, Transform earth, Transform binary,
-                                      Transform ligo, AITutor tutor, Project8.UI.RickVoice voice)
-        {
-            var dirGO = new GameObject("StoryDirector");
-            var director = dirGO.AddComponent<StoryDirector>();
-            director.simulation = sim;
-            director.model = model;
-            director.ship = ship;
-            director.earth = earth;
-            director.binary = binary;
-            director.ligo = ligo;
-            director.voice = voice;
-            director.cockpit = ship.GetComponent<CockpitControls>();
-
-            // All of Rick's narration now renders as subtitles at the bottom-centre
-            // of the canopy - no more pop-up mission panel. Contextual mission
-            // buttons live on the same strip, shown only when the story needs them.
-            var canvasGO = new GameObject("SubtitleBar");
-            var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvasGO.AddComponent<GraphicRaycaster>();
-            AddComponentByNames(canvasGO,
-                "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
-            var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(1050f, 210f);
-            canvasGO.transform.SetParent(ship, true);
-            canvasGO.transform.localPosition = new Vector3(0f, 0.70f, 1.18f);
-            canvasGO.transform.localScale = Vector3.one * 0.0011f;
-            canvasGO.transform.rotation =
-                Quaternion.LookRotation((canvasGO.transform.position - eye).normalized, Vector3.up);
-
-            var bg = NewUIObject("Background", rt);
-            Stretch(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = _uiSprite;
-            bgImg.type = Image.Type.Sliced;
-            StylePanel(bgImg);
-
-            director.narrationText = MakeText(rt, "Narration", "", 19, FontStyle.Normal,
-                TextAnchor.MiddleCenter, new Color(0.9f, 0.94f, 1f),
-                new Vector2(0f, 40f), new Vector2(990f, 110f));
-
-            director.startButton = MissionButton(rt, "Btn_Start", "START MISSION",
-                new Vector2(0f, -62f), 300f, director.StartMission);
-            director.continueButton = MissionButton(rt, "Btn_Continue", "CONTINUE",
-                new Vector2(0f, -62f), 300f, director.ContinueMission);
-            director.restartButton = MissionButton(rt, "Btn_Restart", "RESTART MISSION",
-                new Vector2(0f, -62f), 300f, director.RestartMission);
-            director.continueButton.gameObject.SetActive(false);
-            director.restartButton.gameObject.SetActive(false);
-            return director;
-        }
-
-        static Button MissionButton(Transform rt, string name, string label, Vector2 pos,
-                                    float w, UnityAction call)
-        {
-            var t = MakeButton(rt, name, label, pos, w, call);
-            return t.transform.parent.GetComponent<Button>();
-        }
-
-        // -------------------------------------------------- merged control panel
-        static SimulationUI BuildControlPanel(Transform ship, Vector3 eye, SimulationController sim,
-                                      GravitationalWaveModel model, SimulationParameters parameters,
-                                      PerspectiveController perspective, PredictionTask task,
-                                      AITutor tutor, Project8.UI.RickVoice voice)
-        {
-            var libGO = new GameObject("WaveLibrary");
-            var lib = libGO.AddComponent<WaveLibrary>();
-            lib.parameters = parameters;
-            lib.simulation = sim;
-
-            var canvasGO = new GameObject("ControlPanel");
-            var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvasGO.AddComponent<GraphicRaycaster>();
-            AddComponentByNames(canvasGO,
-                "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
-            var rt = (RectTransform)canvasGO.transform;
-            rt.sizeDelta = new Vector2(950f, 980f);
-            canvasGO.transform.SetParent(ship, true);
-            canvasGO.transform.localPosition = new Vector3(0.12f, 1.44f, 1.14f);
-            canvasGO.transform.localScale = Vector3.one * 0.00115f;
-            canvasGO.transform.rotation =
-                Quaternion.LookRotation((canvasGO.transform.position - eye).normalized, Vector3.up);
-
-            var bg = NewUIObject("Background", rt);
-            Stretch(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = _uiSprite;
-            bgImg.type = Image.Type.Sliced;
-            StylePanel(bgImg);
-
-            var ui = canvasGO.AddComponent<SimulationUI>();
-            ui.simulation = sim;
-            ui.model = model;
-            ui.parameters = parameters;
-            ui.perspective = perspective;
-
-            MakeButton(rt, "Btn_CloseControls", "CLOSE  X",
-                new Vector2(370f, 420f), 140f, ship.GetComponent<CockpitControls>().TogglePanel);
-            MakeText(rt, "Title", "CONTROL PANEL  -  shape the wave, save it, replay it",
-                22, FontStyle.Bold, TextAnchor.MiddleLeft, Accent,
-                new Vector2(-30f, 415f), new Vector2(800f, 40f));
-
-            // ---- TRANSPORT -----------------------------------------------------
-            MakeText(rt, "SecTransport", "TRANSPORT", 14, FontStyle.Bold,
-                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
-                new Vector2(-30f, 385f), new Vector2(800f, 24f));
-            ui.playPauseButtonText = MakeButton(rt, "Btn_PlayPause", "Pause",
-                new Vector2(-330f, 345f), 150f, ui.OnPlayPause);
-            MakeButton(rt, "Btn_Slow", "0.25x", new Vector2(-160f, 345f), 110f, ui.OnSpeedQuarter);
-            MakeButton(rt, "Btn_Normal", "1x", new Vector2(-30f, 345f), 90f, ui.OnSpeedNormal);
-            MakeButton(rt, "Btn_Replay", "Replay", new Vector2(90f, 345f), 110f, ui.OnReplay);
-            MakeButton(rt, "Btn_Reset", "Reset", new Vector2(220f, 345f), 100f, ui.OnReset);
-
-            // ---- WAVE SHAPE ------------------------------------------------------
-            MakeText(rt, "SecShape", "WAVE SHAPE", 14, FontStyle.Bold,
-                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
-                new Vector2(-30f, 292f), new Vector2(800f, 24f));
-            ui.amplitudeSlider = MakeSlider(rt, "Slider_Amplitude",
-                new Vector2(-60f, 252f), 460f, 0f, 1f, parameters.strainAmplitude, ui.SetAmplitude);
-            ui.amplitudeValueText = MakeText(rt, "AmpValue", "", 16, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 252f), new Vector2(250f, 30f));
-            MakeText(rt, "AmpLabel", "strain amplitude h0", 15, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, 216f), new Vector2(460f, 22f));
-
-            ui.frequencySlider = MakeSlider(rt, "Slider_Frequency",
-                new Vector2(-60f, 178f), 460f, 0.05f, 4f, parameters.frequencyHz, ui.SetFrequency);
-            ui.frequencyValueText = MakeText(rt, "FreqValue", "", 16, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 178f), new Vector2(250f, 30f));
-            MakeText(rt, "FreqLabel", "frequency f (Hz)", 15, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, 142f), new Vector2(460f, 22f));
-
-            ui.exaggerationSlider = MakeSlider(rt, "Slider_Exaggeration",
-                new Vector2(-60f, 104f), 460f, 0f, 2f, parameters.displacementExaggeration,
-                ui.SetExaggeration);
-            ui.exaggerationValueText = MakeText(rt, "ExagValue", "", 16, FontStyle.Normal,
-                TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f),
-                new Vector2(215f, 104f), new Vector2(260f, 30f));
-            MakeText(rt, "ExagLabel", "exaggeration: 0 = real scale (invisible)  ->  2 = max",
-                14, FontStyle.Normal, TextAnchor.MiddleLeft, new Color(0.75f, 0.75f, 0.8f),
-                new Vector2(-60f, 68f), new Vector2(700f, 26f));
-
-            // ---- SAVED WAVES ----------------------------------------------------
-            MakeText(rt, "SecSlots", "SAVED WAVES", 14, FontStyle.Bold,
-                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
-                new Vector2(-30f, 25f), new Vector2(800f, 24f));
-            lib.slotTexts = new Text[4];
-            for (int i = 0; i < 4; i++)
-            {
-                var t = MakeButton(rt, "Btn_Wave" + i, $"Wave {i + 1}  (empty)",
-                    new Vector2(-300f + i * 170f, -20f), 155f);
-                var b = t.transform.parent.GetComponent<Button>();
-                int slot = i;
-                UnityEventTools.AddIntPersistentListener(b.onClick, lib.LoadSlot, slot);
-                lib.slotTexts[i] = t;
-            }
-            lib.saveHintText = MakeText(rt, "SlotHint",
-                "click a slot to load; 'SAVE TO SLOT' then a slot saves there",
-                13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(0.7f, 0.7f, 0.78f),
-                new Vector2(0f, -58f), new Vector2(860f, 24f));
-            lib.saveButtonText = MakeButton(rt, "Btn_Save", "Save to slot...",
-                new Vector2(-130f, -105f), 210f, lib.ArmSave);
-            MakeButton(rt, "Btn_ReplayWave", "Replay wave", new Vector2(130f, -105f), 210f,
-                lib.ReplayCurrent);
-
-            // ---- MISSION TOOLS --------------------------------------------------
-            MakeText(rt, "SecMission", "MISSION TOOLS", 14, FontStyle.Bold,
-                TextAnchor.MiddleLeft, new Color(Accent.r, Accent.g, Accent.b, 0.8f),
-                new Vector2(-30f, -160f), new Vector2(800f, 24f));
-            ui.perspectiveButtonText = MakeButton(rt, "Btn_Ride", "Ride with the wave",
-                new Vector2(-160f, -200f), 260f, ui.OnTogglePerspective);
-            MakeButton(rt, "Btn_Predict", "Predict next mass",
-                new Vector2(130f, -200f), 220f, task.BeginPrediction);
-
-            MakeText(rt, "IfNote",
-                "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it",
-                13, FontStyle.Italic, TextAnchor.MiddleCenter, new Color(1f, 0.55f, 0.55f),
-                new Vector2(0f, -255f), new Vector2(860f, 30f));
-
-            ui.statusText = MakeText(rt, "Status", "", 15, FontStyle.Normal,
-                TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
-                new Vector2(0f, -310f), new Vector2(920f, 26f));
-            MakeText(rt, "Legend",
-                "orange tint = stretch   |   blue tint = squeeze   |   nodes glow as the wavefront passes",
-                13, FontStyle.Normal, TextAnchor.MiddleCenter, new Color(0.65f, 0.65f, 0.72f),
-                new Vector2(0f, -345f), new Vector2(920f, 20f));
-            return ui;
         }
 
         // ------------------------------------------------------------- spaceship
@@ -1465,12 +1198,20 @@ namespace Project8.EditorTools
             binary.simulation = sim;
             binary.inspiralDuration = inspiral;
             binary.startSeparation = 11f;
+            // No orbital-plane tilt: the bedsheet analogy wants the pair orbiting
+            // exactly in the sheet's horizontal plane.
+            binary.orbitTiltDeg = 0f;
 
-            binary.blackHoleA = MakeBlackHole(mats, "BH_A", new Vector3(-5.5f, 0f, 0f), root.transform, 1.9f);
-            binary.blackHoleB = MakeBlackHole(mats, "BH_B", new Vector3(5.5f, 0f, 0f), root.transform, 1.9f);
+            // Sphere-primitive scale 3.8 -> 1.9 m radius: the sheet's -5.5 trough
+            // intersects each hole's lower half (centre -3.8) while the tops stay exposed.
+            binary.blackHoleA = MakeBlackHole(mats, "BH_A", new Vector3(-5.5f, 0f, 0f), root.transform, 3.8f);
+            binary.blackHoleB = MakeBlackHole(mats, "BH_B", new Vector3(5.5f, 0f, 0f), root.transform, 3.8f);
             binary.discA = binary.blackHoleA.Find("AccretionDisc");
             binary.discB = binary.blackHoleB.Find("AccretionDisc");
-            binary.mergedHole = MakeBlackHole(mats, "MergedHole", Vector3.zero, root.transform, 2.4f);
+            // Remnant scale 4.8 -> 2.4 m radius: its bottom at -6.2 sits inside the
+            // sheet's merged -5.5 trough, and it visibly outweighs the 1.9 m precursors.
+            binary.mergedHole = MakeBlackHole(mats, "MergedHole", Vector3.zero, root.transform, 4.8f);
+            binary.mergedHole.gameObject.SetActive(false);
 
             var flashGO = new GameObject("MergerFlash");
             flashGO.transform.SetParent(root.transform, false);
@@ -1759,6 +1500,10 @@ namespace Project8.EditorTools
                 case "LAB PANEL  <": return "实验面板  <";
                 case "BACK TO STORY": return "返回任务剧情";
                 case "CONTROLS  <": return "控制台  <";
+                case "CONTROLS": return "控制台";
+                case "AI tutor - answers appear as subtitles": return "AI 助教 - 回答显示为字幕";
+                case "ASK": return "提问";
+                case "MIC": return "语音";
                 case "PROJECT 08  -  SURFING A GRAVITATIONAL WAVE": return "项目 08  -  冲浪引力波";
                 case "START MISSION": return "开始任务";
                 case "CONTINUE": return "继续";
@@ -1774,19 +1519,34 @@ namespace Project8.EditorTools
                 case "frequency f (Hz)": return "频率 f（赫兹）";
                 case "CONTROL PANEL  -  shape the wave, save it, replay it":
                     return "控制台  -  调整波形、保存、回放";
+                case "CONTROL CONSOLE": return "控制台";
+                case "WAVE LAB": return "波形实验";
+                case "MISSION & HELP": return "任务与帮助";
+                case "WAVE SHAPE": return "波形参数";
+                case "SAVED WAVES": return "已存波形";
+                case "REPLAY CURRENT WAVE": return "重播当前波";
+                case "RESET": return "重置";
+                case "CONFIRM OVERWRITE": return "确认覆盖";
+                case "CANCEL": return "取消";
+                case "DETAIL ON/OFF": return "细节 开/关";
+                case "MISSION TOOLS": return "任务工具";
+                case "RICK · A2": return "RICK · A2";
                 case "Save wave": return "保存波形";
                 case "Replay wave": return "回放波形";
                 case "click a slot: empty = save current wave, saved = load it": return "点击空槽保存波形，点击已存槽加载波形";
                 case "exaggeration: 0 = real scale (invisible)  ->  2 = max": return "形变夸张度：0 = 实际尺度（不可见），2 = 最大";
-                case "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it":
-                    return "地球后方远处的红色 L 形结构是 LIGO 式干涉仪，任务最后一站在它旁边";
+                case "the laser Michelson rig beyond Earth is a LIGO-style teaching cutaway - the mission ends beside it":
+                    return "地球后方的激光迈克耳孙装置是 LIGO 式教学剖面模型，任务最后一站在它旁边";
                 default:
                     if (english.StartsWith("Wave ") && english.EndsWith("  (empty)"))
                         return "波形 " + english.Substring(5, 1) + "（空）";
                     if (english.StartsWith("Simplified teaching model:"))
                         return "简化教学模型：形变经过夸张，传播速度被放慢；真实引力波以光速传播。";
-                    if (english.StartsWith("orange tint ="))
+                    if (english.StartsWith("orange tint =") ||
+                        english.StartsWith("orange = stretch"))
                         return "橙色=拉伸  |  蓝色=挤压  |  波前经过处节点变亮";
+                    if (english.StartsWith("3 stations - 60-degree arms"))
+                        return "3 个测站 - 60 度臂 - 每站一对嵌套 LF/HF - 图中 12 m 代表真实约 10 km";
                     return null;
             }
         }
@@ -1801,6 +1561,11 @@ namespace Project8.EditorTools
                 case "LAB PANEL  <": return "LABPANEEL  <";
                 case "BACK TO STORY": return "TERUG NAAR VERHAAL";
                 case "CONTROLS  <": return "BEDIENING  <";
+                case "CONTROLS": return "BEDIENING";
+                case "AI tutor - answers appear as subtitles":
+                    return "AI-tutor - antwoorden verschijnen als ondertitels";
+                case "ASK": return "VRAAG";
+                case "MIC": return "MIC";
                 case "PROJECT 08  -  SURFING A GRAVITATIONAL WAVE":
                     return "PROJECT 08  -  SURFEN OP EEN ZWAARTEKRACHTGOLF";
                 case "START MISSION": return "MISSIE STARTEN";
@@ -1817,22 +1582,37 @@ namespace Project8.EditorTools
                 case "frequency f (Hz)": return "frequentie f (Hz)";
                 case "CONTROL PANEL  -  shape the wave, save it, replay it":
                     return "BEDIENINGSPANEEL  -  vorm de golf, sla op, speel af";
+                case "CONTROL CONSOLE": return "BEDIENING";
+                case "WAVE LAB": return "GOLFLAB";
+                case "MISSION & HELP": return "MISSIE & HELP";
+                case "WAVE SHAPE": return "GOLFVORM";
+                case "SAVED WAVES": return "OPGESLAGEN GOLVEN";
+                case "REPLAY CURRENT WAVE": return "HUIDIGE GOLF OPNIEUW";
+                case "RESET": return "RESET";
+                case "CONFIRM OVERWRITE": return "OVERSCHRIJVEN";
+                case "CANCEL": return "ANNULEREN";
+                case "DETAIL ON/OFF": return "DETAIL AAN/UIT";
+                case "MISSION TOOLS": return "MISSIE-TOOLS";
                 case "Save wave": return "Golf opslaan";
                 case "Replay wave": return "Golf afspelen";
                 case "click a slot: empty = save current wave, saved = load it":
                     return "klik op een slot: leeg = huidige golf opslaan, opgeslagen = laden";
                 case "exaggeration: 0 = real scale (invisible)  ->  2 = max":
                     return "overdrijving: 0 = echte schaal (onzichtbaar)  ->  2 = max";
-                case "the red L-frame far beyond Earth is a LIGO-style interferometer - the mission ends beside it":
-                    return "het rode L-frame ver achter de Aarde is een LIGO-achtige interferometer - de missie eindigt ernaast";
+                case "the laser Michelson rig beyond Earth is a LIGO-style teaching cutaway - the mission ends beside it":
+                    return "het laser-Michelson-toestel voorbij de Aarde is een LIGO-achtig leermodel - de missie eindigt ernaast";
                 default:
                     if (english.StartsWith("Wave ") && english.EndsWith("  (empty)"))
                         return "Golf " + english.Substring(5, 1) + "  (leeg)";
                     if (english.StartsWith("Simplified teaching model:"))
                         return "Vereenvoudigd lesmodel: deformatie is OVERDREVEN en de voortplanting " +
                                "is VERTRAAGD - echte zwaartekrachtgolven gaan met lichtsnelheid.";
-                    if (english.StartsWith("orange tint ="))
+                    if (english.StartsWith("orange tint =") ||
+                        english.StartsWith("orange = stretch"))
                         return "oranje = uitrekken  |  blauw = samentrekken  |  knopen lichten op bij het golffront";
+                    if (english.StartsWith("3 stations - 60-degree arms"))
+                        return "3 stations - 60-graden armen - genest LF/HF-paar per station - " +
+                               "12 m getoond staat voor ~10 km echte armen";
                     return null;
             }
         }
@@ -1873,23 +1653,20 @@ namespace Project8.EditorTools
         {
             var rt = NewUIObject(name, parent);
             rt.anchoredPosition = pos;
-            rt.sizeDelta = new Vector2(width, 40f);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = _uiSprite;
-            img.type = Image.Type.Sliced;
-            img.color = ButtonFill;
-            var bShadow = rt.gameObject.AddComponent<Shadow>();
-            bShadow.effectColor = new Color(0f, 0f, 0f, 0.4f);
-            bShadow.effectDistance = new Vector2(0f, -4f);
+            rt.sizeDelta = new Vector2(width, 48f); // minimum touch height
+            var img = rt.gameObject.AddComponent<LiquidGlassGraphic>();
+            img.material = GlassMat(GlassRole.Button);
+            img.color = GlassButtonTint;
             var btn = rt.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
             var colors = btn.colors;
-            colors.highlightedColor = ButtonHover;
-            colors.pressedColor = ButtonDown;
+            colors.highlightedColor = new Color(1.2f, 1.2f, 1.3f, 1f);
+            colors.pressedColor = new Color(0.75f, 1.15f, 1.4f, 1f);
+            colors.disabledColor = new Color(0.55f, 0.55f, 0.62f, 0.5f);
             btn.colors = colors;
             if (onClick != null) UnityEventTools.AddPersistentListener(btn.onClick, onClick);
 
-            var text = MakeText(rt, "Label", label, 16, FontStyle.Bold, TextAnchor.MiddleCenter,
+            var text = MakeText(rt, "Label", label, 18, FontStyle.Bold, TextAnchor.MiddleCenter,
                 Color.white, Vector2.zero, rt.sizeDelta);
             Stretch((RectTransform)text.transform);
             return text;
@@ -1900,14 +1677,10 @@ namespace Project8.EditorTools
         {
             var rt = NewUIObject(name, parent);
             rt.anchoredPosition = pos;
-            rt.sizeDelta = new Vector2(width, 42f);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = _uiSprite;
-            img.type = Image.Type.Sliced;
-            img.color = WellFill;
-            var iShadow = rt.gameObject.AddComponent<Shadow>();
-            iShadow.effectColor = new Color(0f, 0f, 0f, 0.5f);
-            iShadow.effectDistance = new Vector2(0f, -3f);
+            rt.sizeDelta = new Vector2(width, 48f);
+            var img = rt.gameObject.AddComponent<LiquidGlassGraphic>();
+            img.material = GlassMat(GlassRole.Inset);
+            img.color = GlassInsetTint;
             var field = rt.gameObject.AddComponent<InputField>();
 
             var textRt = NewUIObject("Text", rt);
@@ -1960,10 +1733,10 @@ namespace Project8.EditorTools
 
             var bg = NewUIObject("Background", rt);
             Stretch(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = _uiSprite;
-            bgImg.type = Image.Type.Sliced;
-            bgImg.color = WellFill;
+            var bgImg = bg.gameObject.AddComponent<LiquidGlassGraphic>();
+            bgImg.material = GlassMat(GlassRole.Inset);
+            bgImg.color = GlassInsetTint;
+            bgImg.raycastTarget = false;
 
             var fillArea = NewUIObject("Fill Area", rt);
             Stretch(fillArea);

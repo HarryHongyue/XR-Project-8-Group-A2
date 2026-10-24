@@ -68,5 +68,15 @@ namespace Project8.Core
             onSimulationReset.Invoke();
             Pause();
         }
+
+        /// <summary>Seek the clock to an arbitrary time, then reset-listen and
+        /// optionally play. Preview/replay machinery uses this to land the wave
+        /// exactly where the user is looking without touching anything else.</summary>
+        public void RestartAt(float t, bool play)
+        {
+            SimulationTime = Mathf.Max(t, 0f);
+            onSimulationReset.Invoke();
+            SetPlaying(play);
+        }
     }
 }

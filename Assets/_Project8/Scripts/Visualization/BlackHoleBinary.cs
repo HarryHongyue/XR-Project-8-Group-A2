@@ -47,12 +47,12 @@ namespace Project8.Visualization
             _com = transform.position;
             _tilt = Quaternion.Euler(orbitTiltDeg, 0f, 0f);
             if (mergedHole != null) mergedHole.gameObject.SetActive(false);
-            if (simulation != null) simulation.onSimulationReset.AddListener(ResetBinary);
+            if (simulation != null) simulation.onSimulationReset.AddListener(SyncToSimulationTime);
         }
 
         void OnDestroy()
         {
-            if (simulation != null) simulation.onSimulationReset.RemoveListener(ResetBinary);
+            if (simulation != null) simulation.onSimulationReset.RemoveListener(SyncToSimulationTime);
         }
 
         /// <summary>Replay/reset support: restore the two holes so the merger can re-run.</summary>
@@ -62,6 +62,51 @@ namespace Project8.Visualization
             _angleDeg = 0f;
             if (blackHoleA != null) blackHoleA.gameObject.SetActive(true);
             if (blackHoleB != null) blackHoleB.gameObject.SetActive(true);
+            if (mergedHole != null) mergedHole.gameObject.SetActive(false);
+            if (mergerFlash != null) mergerFlash.intensity = 0f;
+        }
+
+        /// <summary>Seek-safe resync after RestartAt: the binary pose is recomputed
+        /// deterministically from the CURRENT simulation time. Seeking to t less
+        /// than the inspiral places the pair at their analytic separation/angle;
+        /// seeking at or past it shows the merged remnant immediately - without a
+        /// second flash or another fake merger event.</summary>
+        public void SyncToSimulationTime()
+        {
+            if (simulation == null) { ResetBinary(); return; }
+            float t = simulation.SimulationTime;
+            float td = Mathf.Max(inspiralDuration, 1e-3f);
+            if (t >= td)
+            {
+                HasMerged = true;
+                if (blackHoleA != null) blackHoleA.gameObject.SetActive(false);
+                if (blackHoleB != null) blackHoleB.gameObject.SetActive(false);
+                if (mergedHole != null)
+                {
+                    mergedHole.position = _com;
+                    mergedHole.gameObject.SetActive(true);
+                }
+                if (mergerFlash != null) mergerFlash.intensity = 0f;
+                return;
+            }
+            HasMerged = false;
+            float x = Mathf.Clamp01(t / td);
+            // Analytic integral of the Update() spin profile: angle(t) =
+            // baseSpin * (t + spinRamp * t^4 / (4 td^3)).
+            _angleDeg = baseSpinDegPerSec *
+                (t + spinRamp * t * t * t * t / (4f * td * td * td));
+            float sep = Mathf.Lerp(startSeparation, 0.9f, Mathf.Pow(x, 1.7f));
+            var dir = _tilt * (Quaternion.Euler(0f, _angleDeg, 0f) * Vector3.right);
+            if (blackHoleA != null)
+            {
+                blackHoleA.gameObject.SetActive(true);
+                blackHoleA.position = _com + dir * (sep * 0.5f);
+            }
+            if (blackHoleB != null)
+            {
+                blackHoleB.gameObject.SetActive(true);
+                blackHoleB.position = _com - dir * (sep * 0.5f);
+            }
             if (mergedHole != null) mergedHole.gameObject.SetActive(false);
             if (mergerFlash != null) mergerFlash.intensity = 0f;
         }
