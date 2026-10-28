@@ -434,6 +434,7 @@ namespace Project8.EditorTools
                 horizontalOverflow = HorizontalWrapMode.Wrap,
                 verticalOverflow = VerticalWrapMode.Overflow,
                 generateOutOfBounds = true, textAnchor = TextAnchor.UpperLeft,
+                scaleFactor = 1f,
             };
             int LineCount(string page)
             {

@@ -27,7 +27,26 @@ MonoBehaviour:
     - web
     - lines
     - grid
-    answer: The web of spheres in front of the ship is a lattice of test masses. As the wavefront sweeps through it you can see the links stretch and squeeze alternately - that is how a detector 'sees' a gravitational wave.
+    - sheet
+    - cloth
+    answer: 'The translucent sheet is an analogy for spacetime: heavy objects dent it, and the passing wave ripples across it. The deformation is hugely exaggerated - the real stretching of space is far too small to see.'
+  - keywords:
+    - einstein
+    - telescope
+    - 'et '
+    - triangle
+    - detector
+    - interferometer
+    - ligo
+    answer: 'The triangular facility at the end of the mission is the Einstein Telescope model: three interferometers in an equilateral triangle, each station''s arms at 60 degrees, and each station nesting a low- and a high-frequency instrument - the real 2020 design baseline. Like LIGO''s Michelsons it splits laser light, sends it down two arms and recombines it at the splitter; a wave shifts each round trip differently so the dark ports read differently. Our model shows the principle only - no cavities, suspensions or noise curves.'
+  - keywords:
+    - lf
+    - hf
+    - low frequency
+    - high frequency
+    - lane
+    - xylophone
+    answer: 'Each ET corner station actually hosts TWO interferometers: one cryogenic low-frequency instrument and one high-frequency instrument - the ''xylophone'' layout. In this app the two lanes are drawn separately but share one simplified strain response; the real instruments cover different frequency bands with different noise curves.'
   - keywords:
     - strain
     - delta l
@@ -39,14 +58,14 @@ MonoBehaviour:
     - polarization
     - ellipse
     - deform
-    answer: A passing gravitational wave alternately stretches space in one transverse direction and squeezes it in the perpendicular one - the '+' polarization. Watch the ring of test masses deform into an ellipse that flips orientation.
+    answer: A passing gravitational wave alternately stretches space in one transverse direction and squeezes it in the perpendicular one - the '+' polarization. Watch the sheet ripple orange (stretch) and blue (squeeze) as the ring expands past each station.
   - keywords:
     - wavefront
     - marker
     - reached
     - ahead
     - behind
-    answer: The yellow ring marks where the disturbance has reached right now (s = v*t along the propagation axis). The green and red markers ride just ahead of and behind it so you can predict which mass moves next.
+    answer: The wavefront is the expanding bright ring on the sheet. Stations at different distances from the merger see it at different times - that ordering is what the prediction task asks about.
   - keywords:
     - speed
     - slow
@@ -93,17 +112,17 @@ MonoBehaviour:
     - object
     - sphere
     - grid
-    answer: Each sphere is a freely floating test mass. A wave passing between them changes their separations - that relative change is all a detector can see.
+    answer: 'Free test masses are what a detector measures: the wave changes their separations, and that relative change is all a detector can see. Here the ET stations'' mirrors play that role - each arm endpoint is a test mass.'
   - keywords:
     - pause
     - replay
     - predict
     - task
     - reset
-    answer: Pause mid-flight and predict which mass will move next; the wavefront marker shows what the wave has reached. Replay starts the wave over.
+    answer: Pause mid-flight and predict which ET station the wavefront reaches next - D1, D2 or D3. Replay starts the wave over.
   - keywords:
     - direction
     - propagat
     - travel
-    answer: The wave travels along a fixed axis through the field. Reconstruct it by watching the order in which test masses at different positions respond.
+    answer: The wave spreads outward from the merger in every direction. Watch the order in which the three stations - at different distances - respond.
   fallbackAnswer: Good question. In this visualization a simplified gravitational wave passes a field of test masses. Try asking about strain, stretch and squeeze, the wavefront markers, why the motion is slowed down, or which values are exaggerated.

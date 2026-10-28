@@ -12,7 +12,8 @@ Model-driven loop (brief Figure 3): Parameters -> Model state -> XR scene.
             v
     SimulationController     sim time, play/pause/0.25x/1x/replay/reset
             |
-            +--> TestMassField     displaces each TestMass (ring/grid, colour by sign)
+            +--> SpacetimeSheet    translucent membrane: gaussian wells + wave ripples
+            +--> EinsteinTelescope  horizontal triangle, 3 stations x 60-deg LF/HF lanes
             +--> WavefrontMarkers  front s=v*t plus ahead/behind guide rings
             +--> PerspectiveController  observer <-> ride-with-the-wave blend
             +--> WavefrontAudio    spatial hum, volume ~ |h|, pitch ~ f

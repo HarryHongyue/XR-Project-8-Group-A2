@@ -58,11 +58,10 @@ namespace Project8.EditorTools
                 LoadBuiltins();
                 EnsureFolders();
                 var mats = CreateMaterials();
-                var prefab = CreateTestMassPrefab(mats.TestMass);
                 var storyParams = CreateParameters("SimulationParameters", WaveMode.Chirp);
                 var knowledge = CreateKnowledgeBase();
                 var hum = CreateHumClip();
-                BuildScene(mats, prefab, storyParams, knowledge, hum, "Main");
+                BuildScene(mats, storyParams, knowledge, hum, "Main");
                 BuildWelcomeScene(mats, hum);
                 EditorBuildSettings.scenes = new[]
                 {
@@ -139,7 +138,7 @@ namespace Project8.EditorTools
                         story.continueButton.onClick.GetPersistentEventCount() == 0)
                         throw new InvalidOperationException("Main: mission buttons not connected");
                 }
-                Debug.Log($"[Project8] Validated {sceneName}: VR rig, readable floating UI, star sprite, 3D spacetime lattice.");
+                Debug.Log($"[Project8] Validated {sceneName}: VR rig, readable floating UI, star sprite, spacetime sheet.");
             }
             var welcome = EditorSceneManager.OpenScene($"{Root}/Scenes/Welcome.unity");
             var settings = welcome.GetRootGameObjects()
@@ -235,7 +234,7 @@ namespace Project8.EditorTools
         // ------------------------------------------------------------------ assets
         struct Mats
         {
-            public Material TestMass, Handle;
+            public Material Handle;
             public Material Hull, HullDark, Console, Glass, EngineGlow;
             public Material NetLine, BlackHole, Accretion, AccretionGlow, Planet, StarGlow, Laser;
             public Material ReturnBeam;
@@ -244,7 +243,7 @@ namespace Project8.EditorTools
         static Mats CreateMaterials()
         {
             var m = new Mats();
-            m.TestMass = MakeMaterial("M_TestMass", "Standard", new Color(0.92f, 0.92f, 0.95f), 0.35f);
+
             bool freshHandle = !MaterialExists("M_StrainHandle");
             m.Handle = MakeMaterial("M_StrainHandle", "Standard", new Color(0.15f, 0.7f, 0.75f), 0.5f);
             if (freshHandle)
@@ -321,18 +320,7 @@ namespace Project8.EditorTools
             return mat;
         }
 
-        static TestMass CreateTestMassPrefab(Material mat)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            go.name = "TestMass";
-            go.transform.localScale = Vector3.one * 0.075f;
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            go.AddComponent<TestMass>();
-            string path = $"{Root}/Prefabs/TestMass.prefab";
-            var prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
-            UnityEngine.Object.DestroyImmediate(go);
-            return prefab.GetComponent<TestMass>();
-        }
+
 
         static SimulationParameters CreateParameters(string assetName, WaveMode mode)
         {
@@ -377,10 +365,10 @@ namespace Project8.EditorTools
                   "binary. They orbit faster and faster as they spiral inward, then merge - " +
                   "the flash marks coalescence, when the emitted strain peaks: a 'chirp' " +
                   "signal that sweeps upward in frequency and amplitude, like GW150914."),
-                E(new[]{"net","lattice","web","lines","grid"},
-                  "The web of spheres in front of the ship is a lattice of test masses. As " +
-                  "the wavefront sweeps through it you can see the links stretch and squeeze " +
-                  "alternately - that is how a detector 'sees' a gravitational wave."),
+                E(new[]{"net","lattice","web","lines","grid","sheet","cloth"},
+                  "The translucent sheet is an analogy for spacetime: heavy objects dent " +
+                  "it, and the passing wave ripples across it. The deformation is hugely " +
+                  "exaggerated - the real stretching of space is far too small to see."),
                 E(new[]{"einstein","telescope","et ","triangle","detector","interferometer","ligo"},
                   "The triangular facility at the end of the mission is the Einstein " +
                   "Telescope model: three interferometers in an equilateral triangle, each " +
@@ -404,11 +392,12 @@ namespace Project8.EditorTools
                 E(new[]{"stretch","squeeze","polarization","ellipse","deform"},
                   "A passing gravitational wave alternately stretches space in one transverse " +
                   "direction and squeezes it in the perpendicular one - the '+' polarization. " +
-                  "Watch the ring of test masses deform into an ellipse that flips orientation."),
+                  "Watch the sheet ripple orange (stretch) and blue (squeeze) as the ring " +
+                  "expands past each station."),
                 E(new[]{"wavefront","marker","reached","ahead","behind"},
-                  "The yellow ring marks where the disturbance has reached right now " +
-                  "(s = v*t along the propagation axis). The green and red markers ride just " +
-                  "ahead of and behind it so you can predict which mass moves next."),
+                  "The wavefront is the expanding bright ring on the sheet. Stations at " +
+                  "different distances from the merger see it at different times - that " +
+                  "ordering is what the prediction task asks about."),
                 E(new[]{"speed","slow","light","fast","velocity"},
                   "Real gravitational waves travel at the speed of light - you could never " +
                   "watch or surf one. This app only slows the VISUALIZATION speed; the model " +
@@ -432,14 +421,15 @@ namespace Project8.EditorTools
                   "amplitude stay the same - they are model parameters. What changes is only " +
                   "your reference frame, a visualization choice."),
                 E(new[]{"mass","particle","ring","object","sphere","grid"},
-                  "Each sphere is a freely floating test mass. A wave passing between them " +
-                  "changes their separations - that relative change is all a detector can see."),
+                  "Free test masses are what a detector measures: the wave changes their " +
+                  "separations, and that relative change is all a detector can see. Here the " +
+                  "ET stations' mirrors play that role - each arm endpoint is a test mass."),
                 E(new[]{"pause","replay","predict","task","reset"},
-                  "Pause mid-flight and predict which mass will move next; the wavefront " +
-                  "marker shows what the wave has reached. Replay starts the wave over."),
+                  "Pause mid-flight and predict which ET station the wavefront reaches " +
+                  "next - D1, D2 or D3. Replay starts the wave over."),
                 E(new[]{"direction","propagat","travel"},
-                  "The wave travels along a fixed axis through the field. Reconstruct it by " +
-                  "watching the order in which test masses at different positions respond."),
+                  "The wave spreads outward from the merger in every direction. Watch the " +
+                  "order in which the three stations - at different distances - respond."),
             };
             EditorUtility.SetDirty(kb);
             return kb;
@@ -541,7 +531,7 @@ namespace Project8.EditorTools
             EditorSceneManager.SaveScene(scene, $"{Root}/Scenes/Welcome.unity");
         }
 
-        static void BuildScene(Mats mats, TestMass massPrefab, SimulationParameters parameters,
+        static void BuildScene(Mats mats, SimulationParameters parameters,
                                TutorKnowledgeBase knowledge, AudioClip hum, string sceneName)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -637,20 +627,8 @@ namespace Project8.EditorTools
                 new SpacetimeSheet.GravityWell { source = binary.blackHoleA, depth = 7f, radius = 3f },
                 new SpacetimeSheet.GravityWell { source = binary.blackHoleB, depth = 7f, radius = 3f },
                 new SpacetimeSheet.GravityWell { source = binary.mergedHole, depth = 7f, radius = 4f },
-                new SpacetimeSheet.GravityWell { source = earth.transform, depth = 1.7f, radius = 8f },
+                new SpacetimeSheet.GravityWell { source = earth.transform, depth = 3.2f, radius = 10f },
             };
-
-            var fieldGO = new GameObject("PredictionTestMasses");
-            fieldGO.transform.position = new Vector3(-5f, 1.8f, 15f);
-            var field = fieldGO.AddComponent<TestMassField>();
-            field.model = model;
-            field.simulation = controller;
-            field.testMassPrefab = massPrefab;
-            field.layout = TestMassField.FieldLayout.Volume;
-            field.gridSize = 3;
-            field.gridSpacing = 3f;
-            field.depthCount = 5;
-            field.depthSpacing = 3f;
 
             // --- spaceship + seated rig -----------------------------------------
             var ship = BuildSpaceship(mats, hum);
@@ -703,7 +681,6 @@ namespace Project8.EditorTools
             // --- prediction task --------------------------------------------------
             var taskGO = new GameObject("PredictionTask");
             var task = taskGO.AddComponent<PredictionTask>();
-            task.field = field;
             task.model = model;
             task.simulation = controller;
 
@@ -733,6 +710,8 @@ namespace Project8.EditorTools
             BuildPlaybackDock(ship.transform, eyeWorld, controller, story);
             cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eyeWorld);
             BuildRickAvatar(ship.transform, eyeWorld, tutor, voice, subtitles);
+            task.et = et;
+            task.subtitles = subtitles;
             task.ui = panel;
             panel.gameObject.SetActive(false);
             cockpit.secondaryPanel.SetActive(false);
@@ -780,17 +759,23 @@ namespace Project8.EditorTools
         // ------------------------------------------------------------- earth
         static Transform BuildEarth(Mats mats, Vector3 pos, float radius)
         {
+            // Root carries the deformer + the sheet's gravity well; the map lives
+            // on a child so it can spin without rotating the strain axes.
+            var root = new GameObject("Earth");
+            root.transform.position = pos;
             var e = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            e.name = "Earth";
-            e.transform.position = pos;
+            e.name = "Surface";
+            e.transform.SetParent(root.transform, false);
             e.transform.localScale = Vector3.one * radius * 2f;
             e.GetComponent<Renderer>().sharedMaterial = CreateEarthMaterial();
             KillCollider(e);
             // No atmosphere shell: the previous additive "glow" sphere rendered as
             // an opaque shroud that hid the whole Blue Marble surface.
-            var d = e.AddComponent<EarthDeformer>();
+            var d = root.AddComponent<EarthDeformer>();
             d.visualGain = 0.35f;
-            return e.transform;
+            d.visual = e.transform;
+            d.spinDegPerSec = 3f;
+            return root.transform;
         }
 
         static Material CreateEarthMaterial()
@@ -1513,7 +1498,7 @@ namespace Project8.EditorTools
                 case "Replay": return "重播";
                 case "Reset": return "重置";
                 case "Ride with the wave": return "跟随引力波";
-                case "Predict next mass": return "预测下一个小球";
+                case "Predict next station": return "预测下一测站";
                 case "ASK RICK": return "提问 RICK";
                 case "strain amplitude h0": return "应变振幅 h0";
                 case "frequency f (Hz)": return "频率 f（赫兹）";
@@ -1576,7 +1561,7 @@ namespace Project8.EditorTools
                 case "Replay": return "Opnieuw";
                 case "Reset": return "Resetten";
                 case "Ride with the wave": return "Surfen op de golf";
-                case "Predict next mass": return "Voorspel volgende massa";
+                case "Predict next station": return "Voorspel volgend station";
                 case "ASK RICK": return "VRAAG AAN RICK";
                 case "strain amplitude h0": return "rek-amplitude h0";
                 case "frequency f (Hz)": return "frequentie f (Hz)";
@@ -1660,8 +1645,10 @@ namespace Project8.EditorTools
             var btn = rt.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
             var colors = btn.colors;
-            colors.highlightedColor = new Color(1.2f, 1.2f, 1.3f, 1f);
-            colors.pressedColor = new Color(0.75f, 1.15f, 1.4f, 1f);
+            // Hover pushes the glass toward opaque white; ButtonLabelHover flips
+            // the label to deep blue at the same moment - never white-on-white.
+            colors.highlightedColor = new Color(1.7f, 1.75f, 1.8f, 1f);
+            colors.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
             colors.disabledColor = new Color(0.55f, 0.55f, 0.62f, 0.5f);
             btn.colors = colors;
             if (onClick != null) UnityEventTools.AddPersistentListener(btn.onClick, onClick);
@@ -1669,6 +1656,8 @@ namespace Project8.EditorTools
             var text = MakeText(rt, "Label", label, 18, FontStyle.Bold, TextAnchor.MiddleCenter,
                 Color.white, Vector2.zero, rt.sizeDelta);
             Stretch((RectTransform)text.transform);
+            var hover = rt.gameObject.AddComponent<Project8.UI.ButtonLabelHover>();
+            hover.label = text;
             return text;
         }
 

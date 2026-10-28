@@ -1,71 +1,107 @@
 using UnityEngine;
 using Project8.Core;
 using Project8.Visualization;
+using Project8.UI;
 
 namespace Project8.Evaluation
 {
     /// <summary>
-    /// Guided prediction task from the brief's evaluation section: the simulation pauses
-    /// while the wave is in flight and asks "which test mass will be affected next?".
-    /// The user selects a mass (XR ray poke or editor mouse click); the answer is scored
-    /// against retarded-time distances and logged for the research component.
+    /// Guided prediction task from the brief's evaluation section. While the wave
+    /// is in flight the user pauses and predicts WHICH EINSTEIN TELESCOPE STATION
+    /// (D1/D2/D3) the expanding front reaches next - the stations sit at different
+    /// distances from the merger, so the retarded-time ordering is a real physics
+    /// question, not a trick. Answers are picked with the D1/D2/D3 console buttons
+    /// and logged for the research component.
     /// </summary>
     public class PredictionTask : MonoBehaviour
     {
-        public TestMassField field;
+        public EinsteinTelescopeDisplay et;
         public GravitationalWaveModel model;
         public SimulationController simulation;
-        public UI.SimulationUI ui;
+        public SimulationUI ui;
+        public RickSubtitles subtitles;
 
         public bool TaskActive { get; private set; }
-        TestMass _correct;
-        float _resumeTime;
+        int _correctStation = -1;
 
         /// <summary>Pause the wave and start a prediction round.</summary>
         public void BeginPrediction()
         {
-            if (field == null || model == null || simulation == null) return;
+            if (et == null || model == null || simulation == null) return;
             if (TaskActive) return;
 
-            _correct = FindNextMass();
-            if (_correct == null) return; // wave has already passed everything
+            _correctStation = FindNextStation();
+            if (_correctStation < 0)
+            {
+                Announce(ExperienceSettings.IsChinese
+                    ? "波前尚未抵达任何一个测站或已全部通过 - 先让波传播一段再试。"
+                    : "No station is still waiting on the wave - let it travel first.");
+                return;
+            }
 
-            _resumeTime = simulation.SimulationTime;
             simulation.Pause();
             TaskActive = true;
             ResearchLogger.Instance?.LogEvent("PredictionTask", "begin");
-            if (ui != null && ui.statusText != null)
-                ui.statusText.text = "PREDICT: which test mass will move next? Select it.";
+            Announce(ExperienceSettings.IsChinese
+                ? "预测：引力波下一步会先到达 ET 的哪个测站？按 D1 / D2 / D3 作答。"
+                : ExperienceSettings.IsDutch
+                    ? "Voorspel: welk ET-station bereikt de golf eerst? Kies D1 / D2 / D3."
+                    : "PREDICT: which ET station does the wavefront reach next? Answer with D1 / D2 / D3.");
         }
 
-        TestMass FindNextMass()
+        /// <summary>Index of the station with the smallest positive time-to-hit,
+        /// or -1 when the front has already passed every station.</summary>
+        int FindNextStation()
         {
             float t = simulation.SimulationTime;
-            TestMass best = null;
+            int best = -1;
             float bestTau = float.MaxValue;
-            foreach (var m in field.Masses)
+            for (int i = 0; i < 3; i++)
             {
-                Vector3 worldRest = field.transform.TransformPoint(m.RestLocalPosition);
-                float tau = model.RetardedTime(worldRest, t);
-                float timeToHit = -tau; // how long until the front reaches this mass
-                if (timeToHit > 0f && timeToHit < bestTau) { bestTau = timeToHit; best = m; }
+                Vector3 pos = StationWorldPos(i);
+                float tau = model.RetardedTime(pos, t);
+                float timeToHit = -tau; // how long until the front reaches this station
+                if (timeToHit > 0.05f && timeToHit < bestTau) { bestTau = timeToHit; best = i; }
             }
             return best;
         }
 
-        /// <summary>Called by TestMass when the user selects a candidate.</summary>
-        public void TrySelect(TestMass mass)
+        Vector3 StationWorldPos(int i)
         {
-            if (!TaskActive || mass == null) return;
-            bool correct = mass == _correct;
-            mass.SetHighlighted(correct);
+            if (et.transform != null && et.vertices != null && i < et.vertices.Length)
+                return et.transform.TransformPoint(et.vertices[i]);
+            return et.transform.position;
+        }
+
+        /// <summary>Called by the D1/D2/D3 console buttons - during an active
+        /// prediction they answer the task; otherwise the display selection is
+        /// the only effect.</summary>
+        public void AnswerStation(int index)
+        {
+            if (!TaskActive || index < 0 || index > 2) return;
+            bool correct = index == _correctStation;
             ResearchLogger.Instance?.LogEvent("PredictionTask",
-                $"answered={(correct ? "correct" : "wrong")}");
-            if (ui != null && ui.statusText != null)
-                ui.statusText.text = correct
-                    ? "Correct - this mass is closest to the approaching wavefront. Press Play."
-                    : "Not quite - think about where the wavefront has reached. Try again.";
-            if (correct) TaskActive = false;
+                $"answered=D{index + 1} {(correct ? "correct" : "wrong")}");
+            if (correct)
+            {
+                TaskActive = false;
+                _correctStation = -1;
+                Announce(ExperienceSettings.IsChinese
+                    ? $"正确 - D{index + 1} 离波前最近，会先测到信号。按播放继续观察它抵达。"
+                    : $"Correct - D{index + 1} is closest to the wavefront and registers it first. Press Play to watch it arrive.");
+            }
+            else
+            {
+                Announce(ExperienceSettings.IsChinese
+                    ? "不对 - 想一想波前已经扩散到多远，哪一站离波前最近？再试一次。"
+                    : "Not quite - think about how far the ring has already spread. Which station is closest to it? Try again.");
+            }
+        }
+
+        void Announce(string message)
+        {
+            if (subtitles != null) { subtitles.ShowAnswer(message); return; }
+            if (ui != null && ui.statusText != null) ui.statusText.text = message;
         }
     }
 }

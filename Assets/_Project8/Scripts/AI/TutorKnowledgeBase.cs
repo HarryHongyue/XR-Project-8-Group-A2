@@ -24,9 +24,10 @@ namespace Project8.AI
 
         [TextArea(2, 6)]
         public string fallbackAnswer =
-            "Good question. In this visualization a simplified gravitational wave passes a " +
-            "field of test masses. Try asking about strain, stretch and squeeze, the " +
-            "wavefront markers, why the motion is slowed down, or which values are exaggerated.";
+            "Good question. In this visualization a simplified gravitational wave expands " +
+            "outward from a black-hole merger toward the Einstein Telescope's three " +
+            "stations. Try asking about strain, stretch and squeeze, the wavefront ring, " +
+            "why the motion is slowed down, or which values are exaggerated.";
 
         /// <summary>Returns the best-scoring answer for a free-text question.</summary>
         public string FindBest(string question)

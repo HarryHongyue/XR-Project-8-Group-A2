@@ -38,7 +38,7 @@ namespace Project8.EditorTools
         static string RequestPath => Path.Combine(ProjectRoot, ".tools", "et-ui-redesign-request.json");
         /// <summary>Bumped whenever the verified code revision changes, so a
         /// fresh result cannot be confused with an older run.</summary>
-        const string ResultRevision = "et-ui-redesign-1";
+        const string ResultRevision = "et-ui-redesign-2";
         static double _nextPoll;
 
         [InitializeOnLoadMethod]

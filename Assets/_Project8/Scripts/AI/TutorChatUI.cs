@@ -23,6 +23,9 @@ namespace Project8.AI
         public GameObject chatWindow;
         public Button micButton;
         public Text micLabel;
+        [Tooltip("When present, the mic button drives the wake-word/Whisper voice " +
+                 "loop instead of the legacy dictation path.")]
+        public VoiceInteraction voiceInput;
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR
         UnityEngine.Windows.Speech.DictationRecognizer _dictation;
@@ -46,7 +49,8 @@ namespace Project8.AI
             if (chatWindow != null) chatWindow.SetActive(false);
             bool speechOk = Application.platform == RuntimePlatform.WindowsEditor ||
                             Application.platform == RuntimePlatform.WindowsPlayer;
-            if (micButton != null && !speechOk) micButton.interactable = false;
+            if (micButton != null && !speechOk && voiceInput == null)
+                micButton.interactable = false;
             UpdateMicVisual();
         }
 
@@ -56,9 +60,11 @@ namespace Project8.AI
             if (chatWindow != null) chatWindow.SetActive(!chatWindow.activeSelf);
         }
 
-        /// <summary>Voice input button at the right edge of the input row.</summary>
+        /// <summary>Voice input button at the right edge of the input row -
+        /// prefers the Whisper/wake-word loop when one is wired.</summary>
         public void ToggleVoiceInput()
         {
+            if (voiceInput != null) { voiceInput.ToggleListening(); return; }
             if (_listening) StopDictation();
             else StartDictation();
         }
@@ -114,17 +120,29 @@ namespace Project8.AI
 
         void UpdateMicVisual()
         {
+            bool live = _listening || (voiceInput != null && voiceInput.Listening);
             if (micLabel != null)
-                micLabel.text = _listening ? "..." : "MIC";
+                micLabel.text = live ? "..." : "MIC";
             if (micButton != null)
             {
                 var colors = micButton.colors;
-                colors.normalColor = _listening
+                colors.normalColor = live
                     ? new Color(0.9f, 0.35f, 0.35f, 0.9f)
                     : new Color(0.35f, 0.55f, 0.75f, 0.55f);
                 micButton.colors = colors;
             }
         }
+
+        void Update()
+        {
+            // Reflect the voice loop's own state on the mic button each frame.
+            if (voiceInput != null && voiceInput.Listening != _lastLive)
+            {
+                _lastLive = voiceInput.Listening;
+                UpdateMicVisual();
+            }
+        }
+        bool _lastLive;
 
         void OnDestroy() => StopDictationSafe();
 
@@ -159,7 +177,7 @@ namespace Project8.AI
                 answer);
         }
 
-        void SetAnswer(string s, string voiceText = null)
+        public void SetAnswer(string s, string voiceText = null)
         {
             // Answers and the thinking state arrive through the shared subtitle
             // presenter, which also owns the voice so each utterance is spoken

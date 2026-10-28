@@ -26,7 +26,10 @@ namespace Project8.Interaction
         enum Drawer { None, Secondary, Controls }
         Drawer _drawer;
         bool _desktop;
-        float _yaw;
+        /// <summary>Desktop only: Tab toggles the mouse between UI mode (cursor
+        /// visible and free, no view movement) and look mode (cursor hidden and
+        /// locked, mouse steers the view). Opening any drawer frees the cursor.</summary>
+        bool _cursorFree = false; // Tab once: cursor appears. Tab again: look mode.
         float _pitch;
 
         /// <summary>In XR the user's physical facing rarely matches the rig's +Z, so
@@ -99,6 +102,7 @@ namespace Project8.Interaction
             if (xrInputModule != null) xrInputModule.enabled = true;
             if (desktopInputModule != null) desktopInputModule.enabled = false;
             if (_deviceSim != null) _deviceSim.SetActive(_desktop);
+            ApplyCursorState();
         }
 
         public void TogglePanel() => ShowControls();
@@ -128,8 +132,21 @@ namespace Project8.Interaction
                 if (secondaryPanel != null) secondaryPanel.SetActive(drawer == Drawer.Secondary);
             }
             if (compactPanel != null) compactPanel.SetActive(true);
-            Cursor.visible = true;
-            Cursor.lockState = CursorLockMode.None;
+            // Any drawer needs a usable pointer - free the cursor until Tab locks it.
+            if (_desktop && drawer != Drawer.None) _cursorFree = true;
+            ApplyCursorState();
+        }
+
+        void ApplyCursorState()
+        {
+            if (!_desktop)
+            {
+                Cursor.visible = false;
+                Cursor.lockState = CursorLockMode.Locked;
+                return;
+            }
+            Cursor.visible = _cursorFree;
+            Cursor.lockState = _cursorFree ? CursorLockMode.None : CursorLockMode.Locked;
         }
 
         void Update()
@@ -171,8 +188,21 @@ namespace Project8.Interaction
 
             if (!_desktop || Keyboard.current == null) return;
             var keys = Keyboard.current;
+            // Tab trades the mouse between "point at UI" and "steer the view":
+            // freed, the cursor is visible and the view stands still; locked,
+            // the cursor hides and the mouse flies the ship.
+            if (keys.tabKey.wasPressedThisFrame)
+            {
+                _cursorFree = !_cursorFree;
+                ApplyCursorState();
+            }
             if (keys.mKey.wasPressedThisFrame) TogglePanel();
-            if (keys.escapeKey.wasPressedThisFrame) ClosePanels();
+            if (keys.escapeKey.wasPressedThisFrame)
+            {
+                ClosePanels();
+                _cursorFree = true;
+                ApplyCursorState();
+            }
             // Desktop Enter advances the story only - it never opens panels.
             if (keys.enterKey.wasPressedThisFrame && story != null)
                 story.Advance();
@@ -191,21 +221,16 @@ namespace Project8.Interaction
                 transform.position += Vector3.ClampMagnitude(movement, 1f) * speed * Time.deltaTime;
             }
 
-            // Free mouse-look in desktop mode: the view follows the mouse directly,
-            // no button hold required. Paused while the pointer is over UI so panel
-            // clicks never rotate the view. While piloting, horizontal motion yaws
-            // the SHIP so WASD stays aligned; during story cinematics it only turns
-            // the head so the ship keeps its choreographed course. In VR the
-            // TrackedPoseDriver owns the camera instead (real head tracking).
-            if (Mouse.current == null || seatedCamera == null) return;
-            bool overUI = UnityEngine.EventSystems.EventSystem.current != null &&
-                          UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
-            if (overUI) return;
+            // Mouse-look runs only while the cursor is locked (Tab toggles). The
+            // camera is bolted to the cockpit: horizontal motion yaws the whole
+            // SHIP around the seat so every panel stays dead ahead, vertical
+            // motion pitches only the camera. No free-floating crosshair drift -
+            // either you're steering the ship or you're pointing at a panel.
+            if (_cursorFree || Mouse.current == null || seatedCamera == null) return;
             Vector2 delta = Mouse.current.delta.ReadValue() * lookSensitivity;
-            if (piloting) transform.Rotate(0f, delta.x, 0f, Space.World);
-            else _yaw = Mathf.Clamp(_yaw + delta.x, -80f, 80f);
+            transform.RotateAround(seatedCamera.transform.position, Vector3.up, delta.x);
             _pitch = Mathf.Clamp(_pitch - delta.y, -60f, 70f);
-            seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, _yaw, 0f);
+            seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
 
         static Vector2 ReadStick(UnityEngine.InputSystem.XR.XRController controller)

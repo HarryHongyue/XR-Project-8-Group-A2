@@ -25,6 +25,10 @@ namespace Project8.Visualization
         [Tooltip("Extra gain so a planet-sized body visibly deforms. Still an exaggeration label.")]
         public float visualGain = 0.35f;
         public float maxDeform = 0.25f;
+        [Tooltip("The rotating surface sphere - spins on its own so the strain axes " +
+                 "stay referenced to this parent, not the turning map.")]
+        public Transform visual;
+        public float spinDegPerSec = 3f;
 
         Vector3 _restScale;
         Vector3 _u1, _u2;
@@ -34,6 +38,8 @@ namespace Project8.Visualization
 
         void Update()
         {
+            if (visual != null && spinDegPerSec != 0f)
+                visual.Rotate(Vector3.up, spinDegPerSec * Time.deltaTime, Space.Self);
             if (model == null || simulation == null) return;
             float h = model.StrainAt(transform.position, simulation.SimulationTime);
             float ex = model.parameters != null ? model.parameters.displacementExaggeration : 1f;

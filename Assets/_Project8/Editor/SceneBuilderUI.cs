@@ -10,6 +10,7 @@ using Project8.Evaluation;
 using Project8.Interaction;
 using Project8.AI;
 using Project8.Visualization;
+using Project8.Perspective;
 
 namespace Project8.EditorTools
 {
@@ -346,6 +347,15 @@ namespace Project8.EditorTools
             chat.tutor = tutor;
             chat.voice = voice;
             chat.subtitles = subtitles;
+            // Wake-word + microphone + Whisper path: "Hey Rick" (Windows) or the
+            // MIC button (everywhere) -> record -> transcribe -> ask -> spoken
+            // answer. Endpoint stays empty until WHISPER_ENDPOINT is provided.
+            var vi = tutor.gameObject.AddComponent<Project8.AI.VoiceInteraction>();
+            vi.tutor = tutor;
+            vi.chat = chat;
+            vi.subtitles = subtitles;
+            vi.voice = voice;
+            chat.voiceInput = vi;
 
             var window = NewUIObject("ChatWindow", rt);
             window.anchoredPosition = new Vector2(0f, 45f);
@@ -378,12 +388,14 @@ namespace Project8.EditorTools
             var avBtn = avatar.gameObject.AddComponent<Button>();
             avBtn.targetGraphic = avGlass;
             var avColors = avBtn.colors;
-            avColors.highlightedColor = new Color(0.45f, 0.75f, 0.95f, 0.85f);
-            avColors.pressedColor = new Color(0.60f, 0.90f, 1f, 0.95f);
+            avColors.highlightedColor = new Color(1.7f, 1.75f, 1.8f, 1f);
+            avColors.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
             avBtn.colors = avColors;
             UnityEventTools.AddPersistentListener(avBtn.onClick, chat.ToggleChat);
-            MakeText(avatar, "Face", "RICK", 15, FontStyle.Bold, TextAnchor.MiddleCenter,
-                Color.white, Vector2.zero, avatar.sizeDelta);
+            var avText = MakeText(avatar, "Face", "RICK", 15, FontStyle.Bold,
+                TextAnchor.MiddleCenter, Color.white, Vector2.zero, avatar.sizeDelta);
+            var avHover = avatar.gameObject.AddComponent<ButtonLabelHover>();
+            avHover.label = avText;
 
             UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
         }
@@ -496,8 +508,8 @@ namespace Project8.EditorTools
                 var cardBtn = card.gameObject.AddComponent<Button>();
                 cardBtn.targetGraphic = cardGlass;
                 var cc = cardBtn.colors;
-                cc.highlightedColor = new Color(1.2f, 1.2f, 1.25f, 1f);
-                cc.pressedColor = new Color(0.8f, 1.1f, 1.3f, 1f);
+                cc.highlightedColor = new Color(1.7f, 1.75f, 1.8f, 1f);
+                cc.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
                 cc.disabledColor = new Color(0.6f, 0.6f, 0.65f, 0.5f);
                 cardBtn.colors = cc;
                 int slot = i;
@@ -507,6 +519,8 @@ namespace Project8.EditorTools
                     FontStyle.Normal, TextAnchor.MiddleCenter, InkPrimary,
                     Vector2.zero, card.sizeDelta);
                 Stretch((RectTransform)cardText.transform);
+                var cardHover = card.gameObject.AddComponent<ButtonLabelHover>();
+                cardHover.label = cardText;
                 lib.slotButtons[i] = cardBtn;
                 lib.slotTexts[i] = cardText;
             }
@@ -547,14 +561,14 @@ namespace Project8.EditorTools
             ui.perspectiveButtonText = MakeButton(wavePage, "Btn_Ride",
                 "Ride with the wave", new Vector2(-140f, -355f), 260f,
                 ui.OnTogglePerspective);
-            Btn(wavePage, "Btn_Predict", "Predict next mass",
+            MakeButton(wavePage, "Btn_Predict", "Predict next station",
                 new Vector2(140f, -355f), 240f, task.BeginPrediction);
 
             ui.statusText = MakeText(wavePage, "Status", "", 18, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
                 new Vector2(0f, -458f), new Vector2(1000f, 36f));
             MakeText(wavePage, "Legend",
-                "orange = stretch   |   blue = squeeze   |   nodes glow as the wavefront passes",
+                "orange = stretch   |   blue = squeeze   |   the ring spreads outward from the merger",
                 16, FontStyle.Normal, TextAnchor.MiddleCenter, InkFaint,
                 new Vector2(0f, -500f), new Vector2(1000f, 30f));
 
@@ -566,6 +580,9 @@ namespace Project8.EditorTools
                     new Vector2(-224f + i * 224f, 300f), 200f, null);
                 UnityEventTools.AddIntPersistentListener(
                     et.stationButtons[i].onClick, et.SelectDetector, i);
+                // During a prediction round the same buttons are the answer keys.
+                UnityEventTools.AddIntPersistentListener(
+                    et.stationButtons[i].onClick, task.AnswerStation, i);
             }
             Btn(etPage, "Btn_Detail", "DETAIL ON/OFF",
                 new Vector2(0f, 220f), 240f, et.ToggleDetail);
