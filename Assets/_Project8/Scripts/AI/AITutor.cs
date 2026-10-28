@@ -64,7 +64,7 @@ namespace Project8.AI
                 if (_azureStyle) req.SetRequestHeader("api-key", _apiKey);
                 else req.SetRequestHeader("Authorization", "Bearer " + _apiKey);
             }
-            req.timeout = 20;
+            req.timeout = 60; // free-tier NIM cold-starts a model - first call can take ~40s
             yield return req.SendWebRequest();
 
             string answer = null;
@@ -130,6 +130,11 @@ namespace Project8.AI
             {
                 _backend = _local;
             }
+            // Warm-up: the free-tier endpoint cold-starts the model on its first
+            // request (~40 s). Fire a trivial call at scene start so the first
+            // real question does not look dead behind the "thinking" placeholder.
+            if (_backend != _local)
+                _backend.Ask("ping", _ => { });
         }
 
         /// <summary>Ask the tutor; the answer arrives via onAnswer. Falls back to the

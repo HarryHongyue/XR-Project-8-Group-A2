@@ -120,7 +120,8 @@ namespace Project8.AI
 
         void UpdateMicVisual()
         {
-            bool live = _listening || (voiceInput != null && voiceInput.Listening);
+            bool live = _listening ||
+                (voiceInput != null && (voiceInput.Listening || voiceInput.Busy));
             if (micLabel != null)
                 micLabel.text = live ? "..." : "MIC";
             if (micButton != null)
@@ -135,10 +136,13 @@ namespace Project8.AI
 
         void Update()
         {
-            // Reflect the voice loop's own state on the mic button each frame.
-            if (voiceInput != null && voiceInput.Listening != _lastLive)
+            // Reflect the voice loop's own state on the mic button each frame -
+            // red while recording OR transcribing so the user always sees it work.
+            if (voiceInput == null) return;
+            bool live = voiceInput.Listening || voiceInput.Busy;
+            if (live != _lastLive)
             {
-                _lastLive = voiceInput.Listening;
+                _lastLive = live;
                 UpdateMicVisual();
             }
         }

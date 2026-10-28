@@ -63,6 +63,9 @@ namespace Project8.AI
         const float SpeechRms = 0.012f;
         const int SampleRate = 16000;
 
+        const string DefaultEndpoint =
+            "https://whisper.omnigent.nl/v1/audio/transcriptions";
+
         string Endpoint
         {
             get
@@ -73,9 +76,9 @@ namespace Project8.AI
                 string baseUrl = System.Environment.GetEnvironmentVariable("WHISPER_BASE_URL");
                 // No trailing slash - the server mounts /v1/realtime-style paths
                 // literally and a doubled or trailing slash 500s.
-                return !string.IsNullOrEmpty(baseUrl)
-                    ? baseUrl.TrimEnd('/') + "/v1/audio/transcriptions"
-                    : null;
+                if (!string.IsNullOrEmpty(baseUrl))
+                    return baseUrl.TrimEnd('/') + "/v1/audio/transcriptions";
+                return DefaultEndpoint;
             }
         }
 
@@ -234,7 +237,16 @@ namespace Project8.AI
                 Busy = true;
                 Hint(ExperienceSettings.IsChinese ? "Rick 在听……" : "Rick is listening...");
             }
-            catch (System.Exception) { Listening = false; Busy = false; }
+            catch (System.Exception e)
+            {
+                Listening = false;
+                Busy = false;
+                WakeResume();
+                Debug.LogWarning("[Project8] Dictation failed: " + e.Message);
+                Hint(ExperienceSettings.IsChinese
+                    ? "语音识别启动失败。"
+                    : "Speech recognizer failed to start.");
+            }
         }
 #endif
 

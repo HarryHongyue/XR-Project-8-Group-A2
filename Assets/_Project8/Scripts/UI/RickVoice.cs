@@ -124,7 +124,21 @@ namespace Project8.UI
                     // EncodedCommand (UTF-16LE Base64) avoids all command-line quoting issues.
                     string encoded = System.Convert.ToBase64String(
                         System.Text.Encoding.Unicode.GetBytes(script));
-                    var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+                    // powershell.exe is not guaranteed to be on PATH on every
+                    // machine - fall back to the absolute System32 location.
+                    string shell = "powershell.exe";
+                    try
+                    {
+                        var probe = new System.Diagnostics.ProcessStartInfo(shell,
+                            "-NoProfile -Command exit 0")
+                        { CreateNoWindow = true, UseShellExecute = false };
+                        using (var p0 = System.Diagnostics.Process.Start(probe)) p0.WaitForExit(3000);
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        shell = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+                    }
+                    var psi = new System.Diagnostics.ProcessStartInfo(shell,
                         "-NoProfile -NonInteractive -EncodedCommand " + encoded)
                     {
                         CreateNoWindow = true,
