@@ -32,10 +32,12 @@ namespace Project8.AI
         public RickVoice voice;
 
         [Header("Whisper server (OpenAI-compatible transcription endpoint)")]
-        [Tooltip("Full URL, e.g. http://your-server:9000/v1/audio/transcriptions . " +
-                 "Falls back to the WHISPER_ENDPOINT environment variable.")]
+        [Tooltip("Full URL, e.g. https://whisper.example.nl/v1/audio/transcriptions . " +
+                 "Resolution order: this field -> WHISPER_ENDPOINT env -> " +
+                 "WHISPER_BASE_URL env + /v1/audio/transcriptions.")]
         public string whisperEndpoint = "";
-        public string whisperModel = "whisper-1";
+        [Tooltip("Model name; empty -> WHISPER_MODEL env -> 'whisper-1'.")]
+        public string whisperModel = "";
         [Tooltip("Environment variable that holds the optional bearer token.")]
         public string whisperApiKeyEnvironmentVariable = "WHISPER_API_KEY";
 
@@ -61,9 +63,25 @@ namespace Project8.AI
         const float SpeechRms = 0.012f;
         const int SampleRate = 16000;
 
-        string Endpoint =>
-            !string.IsNullOrEmpty(whisperEndpoint) ? whisperEndpoint
-            : System.Environment.GetEnvironmentVariable("WHISPER_ENDPOINT");
+        string Endpoint
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(whisperEndpoint)) return whisperEndpoint;
+                string env = System.Environment.GetEnvironmentVariable("WHISPER_ENDPOINT");
+                if (!string.IsNullOrEmpty(env)) return env;
+                string baseUrl = System.Environment.GetEnvironmentVariable("WHISPER_BASE_URL");
+                // No trailing slash - the server mounts /v1/realtime-style paths
+                // literally and a doubled or trailing slash 500s.
+                return !string.IsNullOrEmpty(baseUrl)
+                    ? baseUrl.TrimEnd('/') + "/v1/audio/transcriptions"
+                    : null;
+            }
+        }
+
+        string Model =>
+            !string.IsNullOrEmpty(whisperModel) ? whisperModel
+            : System.Environment.GetEnvironmentVariable("WHISPER_MODEL") ?? "whisper-1";
 
         // --------------------------------------------------------- wake word
         void Start()
@@ -164,7 +182,11 @@ namespace Project8.AI
         {
             var form = new WWWForm();
             form.AddBinaryData("file", WavUtility.FromAudioClip(clip), "speech.wav", "audio/wav");
-            form.AddField("model", whisperModel);
+            form.AddField("model", Model);
+            form.AddField("response_format", "json");
+            // Hint the UI language; the server also auto-detects mixed zh/en.
+            form.AddField("language", ExperienceSettings.IsChinese ? "zh"
+                : ExperienceSettings.IsDutch ? "nl" : "en");
             var req = UnityWebRequest.Post(Endpoint, form);
             string key = System.Environment.GetEnvironmentVariable(
                 whisperApiKeyEnvironmentVariable);
