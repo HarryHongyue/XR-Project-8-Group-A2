@@ -65,15 +65,34 @@ namespace Project8.AI
 
         const string DefaultEndpoint =
             "https://whisper.omnigent.nl/v1/audio/transcriptions";
+        const string DefaultModel = "Systran/faster-whisper-small";
+
+        /// <summary>Environment lookup that ALSO checks the Windows User/Machine
+        /// registry - a Unity instance launched before the vars were set still
+        /// picks them up live, no editor restart required.</summary>
+        static string EnvVar(string name)
+        {
+            string v = System.Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrEmpty(v)) return v;
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR
+            v = System.Environment.GetEnvironmentVariable(
+                name, System.EnvironmentVariableTarget.User);
+            if (!string.IsNullOrEmpty(v)) return v;
+            v = System.Environment.GetEnvironmentVariable(
+                name, System.EnvironmentVariableTarget.Machine);
+            if (!string.IsNullOrEmpty(v)) return v;
+#endif
+            return null;
+        }
 
         string Endpoint
         {
             get
             {
                 if (!string.IsNullOrEmpty(whisperEndpoint)) return whisperEndpoint;
-                string env = System.Environment.GetEnvironmentVariable("WHISPER_ENDPOINT");
+                string env = EnvVar("WHISPER_ENDPOINT");
                 if (!string.IsNullOrEmpty(env)) return env;
-                string baseUrl = System.Environment.GetEnvironmentVariable("WHISPER_BASE_URL");
+                string baseUrl = EnvVar("WHISPER_BASE_URL");
                 // No trailing slash - the server mounts /v1/realtime-style paths
                 // literally and a doubled or trailing slash 500s.
                 if (!string.IsNullOrEmpty(baseUrl))
@@ -84,7 +103,7 @@ namespace Project8.AI
 
         string Model =>
             !string.IsNullOrEmpty(whisperModel) ? whisperModel
-            : System.Environment.GetEnvironmentVariable("WHISPER_MODEL") ?? "whisper-1";
+            : EnvVar("WHISPER_MODEL") ?? DefaultModel;
 
         // --------------------------------------------------------- wake word
         void Start()
@@ -191,8 +210,7 @@ namespace Project8.AI
             form.AddField("language", ExperienceSettings.IsChinese ? "zh"
                 : ExperienceSettings.IsDutch ? "nl" : "en");
             var req = UnityWebRequest.Post(Endpoint, form);
-            string key = System.Environment.GetEnvironmentVariable(
-                whisperApiKeyEnvironmentVariable);
+            string key = EnvVar(whisperApiKeyEnvironmentVariable);
             if (!string.IsNullOrEmpty(key))
                 req.SetRequestHeader("Authorization", "Bearer " + key);
             req.timeout = 30;
@@ -201,9 +219,18 @@ namespace Project8.AI
             WakeResume();
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Hint(ExperienceSettings.IsChinese
-                    ? "语音识别服务暂时不可用。"
-                    : "Speech service unreachable.");
+                // Surface the real status so 401/403 (auth) and 404 (bad model
+                // name) are distinguishable instead of one vague message.
+                long code = req.responseCode;
+                string body = req.downloadHandler != null ? req.downloadHandler.text : "";
+                Debug.LogWarning($"[Project8] Whisper request failed: HTTP {code} {req.error} {body}");
+                Hint(code == 401 || code == 403
+                    ? (ExperienceSettings.IsChinese
+                        ? "语音识别：API key 无效或未配置。"
+                        : "Speech: API key missing or rejected.")
+                    : (ExperienceSettings.IsChinese
+                        ? $"语音识别服务错误（HTTP {code}）。"
+                        : $"Speech service error (HTTP {code})."));
                 yield break;
             }
             var parsed = JsonUtility.FromJson<Transcription>(req.downloadHandler.text);
