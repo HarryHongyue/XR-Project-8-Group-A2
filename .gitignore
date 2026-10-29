@@ -43,3 +43,7 @@ crashlytics-build.properties
 # Android build temp + outputs
 .utmp/
 Builds/
+
+# Unity crash-recovery scene backups (kept locally, never versioned)
+Assets/_Recovery/
+Assets/_Recovery.meta
