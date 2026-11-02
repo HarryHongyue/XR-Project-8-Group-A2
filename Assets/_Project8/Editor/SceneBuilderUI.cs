@@ -186,6 +186,7 @@ namespace Project8.EditorTools
             dock.story = story;
             dock.label = MakeButton(rt, "Btn_PlayPause", "PLAY",
                 new Vector2(0f, 14f), 220f, dock.OnPlayPause);
+            rt.gameObject.AddComponent<UiSpotlightTarget>().id = "play";
             dock.timeText = MakeText(rt, "Time", "t = 0.0 s", 15, FontStyle.Normal,
                 TextAnchor.MiddleCenter, InkSecondary, new Vector2(0f, -28f),
                 new Vector2(230f, 24f));
@@ -210,6 +211,9 @@ namespace Project8.EditorTools
                 Vector2.zero, 240f, story.RestartMission);
             story.continueButton.gameObject.SetActive(false);
             story.restartButton.gameObject.SetActive(false);
+            story.startButton.gameObject.AddComponent<UiSpotlightTarget>().id = "start";
+            story.continueButton.gameObject.AddComponent<UiSpotlightTarget>().id = "continue";
+            story.restartButton.gameObject.AddComponent<UiSpotlightTarget>().id = "restart";
         }
 
         // --------------------------------------------------- mission & help --
@@ -453,6 +457,8 @@ namespace Project8.EditorTools
                 new Vector2(140f, 440f), 240f, null);
             UnityEventTools.AddPersistentListener(tabs.waveButton.onClick, tabs.ShowWave);
             UnityEventTools.AddPersistentListener(tabs.etButton.onClick, tabs.ShowET);
+            tabs.waveButton.gameObject.AddComponent<UiSpotlightTarget>().id = "tab-wave";
+            tabs.etButton.gameObject.AddComponent<UiSpotlightTarget>().id = "tab-et";
 
             // =====================  WAVE PAGE  ================================
             MakeText(wavePage, "SecShape", "WAVE SHAPE", 20, FontStyle.Bold,
@@ -561,8 +567,10 @@ namespace Project8.EditorTools
             ui.perspectiveButtonText = MakeButton(wavePage, "Btn_Ride",
                 "Ride with the wave", new Vector2(-140f, -355f), 260f,
                 ui.OnTogglePerspective);
-            MakeButton(wavePage, "Btn_Predict", "Predict next station",
+            var predictBtn = MakeButton(wavePage, "Btn_Predict", "Predict next station",
                 new Vector2(140f, -355f), 240f, task.BeginPrediction);
+            predictBtn.transform.parent.gameObject
+                .AddComponent<UiSpotlightTarget>().id = "predict";
 
             ui.statusText = MakeText(wavePage, "Status", "", 18, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
@@ -583,6 +591,8 @@ namespace Project8.EditorTools
                 // During a prediction round the same buttons are the answer keys.
                 UnityEventTools.AddIntPersistentListener(
                     et.stationButtons[i].onClick, task.AnswerStation, i);
+                et.stationButtons[i].gameObject.AddComponent<UiSpotlightTarget>()
+                    .id = $"station-{i + 1}";
             }
             Btn(etPage, "Btn_Detail", "DETAIL ON/OFF",
                 new Vector2(0f, 220f), 240f, et.ToggleDetail);

@@ -118,6 +118,7 @@ namespace Project8.Story
                     "zwarte gaten op het punt samen te smelten. De botsing stuurt rimpelingen " +
                     "door de ruimtetijd: zwaartekrachtgolven. Druk op MISSIE STARTEN.");
             SetButtons(true, false, false);
+            UiSpotlightTarget.Show("start");
         }
 
         float SOf(Vector3 p) => Vector3.Dot(p - model.Origin, model.PropagationDirection);
@@ -148,6 +149,7 @@ namespace Project8.Story
                     "Rick: Simulatie vrijgegeven. Blijf staan - zie ze sneller en sneller " +
                     "naar elkaar spiraliseren tot ze botsen. We bewegen pas als de golf er is.");
             SetButtons(false, false, false);
+            UiSpotlightTarget.Show("play");
         }
 
         /// <summary>CONTINUE at the Earth stop: leave Earth and ride on to the
@@ -165,6 +167,7 @@ namespace Project8.Story
                     "Rick: Verder - de golf stopt niet bij de Aarde. Ze rolt door naar een " +
                     "model van de Einstein Telescope verderop.");
             SetButtons(false, false, false);
+            UiSpotlightTarget.Clear();
         }
 
         /// <summary>Reset the journey in place: ship back at its parked start, the
@@ -322,6 +325,7 @@ namespace Project8.Story
                                 "reageert. Druk op DOORGAAN om naar het Einstein " +
                                 "Telescope-model te vliegen.");
                         SetButtons(false, true, false);
+                        UiSpotlightTarget.Show("continue");
                     }
                     break;
                 }
@@ -385,6 +389,7 @@ namespace Project8.Story
                     "D2 of D3 in de ET INSPECTOR om in een station te kijken. Druk op " +
                     "MISSIE HERSTARTEN om alles opnieuw te zien.");
             SetButtons(false, false, true);
+            UiSpotlightTarget.Show("tab-et");
         }
 
         void Narrate(string english, string chinese, string dutch = null)

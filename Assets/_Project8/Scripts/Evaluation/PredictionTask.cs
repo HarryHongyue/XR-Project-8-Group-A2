@@ -41,6 +41,7 @@ namespace Project8.Evaluation
 
             simulation.Pause();
             TaskActive = true;
+            UiSpotlightTarget.SetGroup("station-", true);
             ResearchLogger.Instance?.LogEvent("PredictionTask", "begin");
             Announce(ExperienceSettings.IsChinese
                 ? "预测：引力波下一步会先到达 ET 的哪个测站？按 D1 / D2 / D3 作答。"
@@ -86,6 +87,7 @@ namespace Project8.Evaluation
             {
                 TaskActive = false;
                 _correctStation = -1;
+                UiSpotlightTarget.SetGroup("station-", false);
                 Announce(ExperienceSettings.IsChinese
                     ? $"正确 - D{index + 1} 离波前最近，会先测到信号。按播放继续观察它抵达。"
                     : $"Correct - D{index + 1} is closest to the wavefront and registers it first. Press Play to watch it arrive.");
