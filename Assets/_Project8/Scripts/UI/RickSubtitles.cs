@@ -41,6 +41,10 @@ namespace Project8.UI
         readonly List<string> _answer = new List<string>();
         int _answerIndex;
         bool _showingAnswer;
+        /// <summary>Answers displayed with no voiceText (the "thinking"
+        /// placeholder, system hints) render silently - only pages carrying a
+        /// real utterance are spoken.</summary>
+        bool _answerHasVoice;
         float _pageStart = -1f;
         Font _baseFont;
         bool _cjk;
@@ -74,6 +78,7 @@ namespace Project8.UI
             PaginateInto(display, _answer);
             _answerIndex = 0;
             if (_answer.Count > 0) _showingAnswer = true;
+            _answerHasVoice = !string.IsNullOrEmpty(voiceText);
             _pageStart = -1f;
             RenderCurrent();
         }
@@ -128,7 +133,9 @@ namespace Project8.UI
                 text.text = pages[idx];
                 // Speak exactly the text on screen - Speak() strips the
                 // "Rick: " prefix itself, and a newer page cancels the old clip.
-                if (voice != null) voice.Speak(pages[idx]);
+                // Silent pages (thinking placeholder, hints) render only.
+                if (voice != null && (!_showingAnswer || _answerHasVoice))
+                    voice.Speak(pages[idx]);
                 return;
             }
             if (_showingAnswer)
