@@ -19,9 +19,13 @@ namespace Project8.Story
     ///   4. SlidingEarth   - short lateral slide into the Earth observation spot
     ///   5. EarthPause     - parked beside Earth; CONTINUE button; the narration
     ///                       invites the user to play with the wave controls first
-    ///   6. RidingLigo     - lateral cruise to the interferometer behind Earth
-    ///   7. SlidingLigo    - slide into the detector observation spot
-    ///   8. Done           - LIGO explanation + RESTART MISSION
+    ///   6. Diving         - the ship dives toward Earth and sinks into the crust
+    ///                       while the descent veil fades the view to black
+    ///   7. EnteringLab    - loading beat: the ship materialises inside the
+    ///                       underground laboratory and the veil lifts
+    ///   8. InLab          - the guided step-by-step tour of the interferometer
+    ///                       (LabExperience); free flight stays available
+    ///   9. Done           - tour finished; RESTART MISSION
     /// </summary>
     public class StoryDirector : MonoBehaviour
     {
@@ -30,7 +34,7 @@ namespace Project8.Story
         public Transform ship;
         public Transform earth;
         public Transform binary;
-        [Tooltip("The Einstein Telescope observatory root (final mission stop).")]
+        [Tooltip("The Einstein Telescope observatory root (relocated into the lab).")]
         public Transform ligo;
         public CockpitControls cockpit;
         public RickVoice voice;
@@ -55,14 +59,18 @@ namespace Project8.Story
         public float rideBlendSpeed = 2f;
         public float slideBlendSpeed = 1.2f;
         public Vector3 earthWatchOffset = new Vector3(0f, 3f, -18f);
-        [Tooltip("Elevated oblique overview of the horizontal ET triangle.")]
+        [Tooltip("Legacy: oblique overview offset of the old in-space observatory " +
+                 "spot - the lab is now underground; kept for scene compatibility.")]
         public Vector3 ligoWatchOffset = new Vector3(0f, 11f, -14f);
 
+        /// <summary>The underground laboratory + tour, built at runtime in Start.</summary>
+        public LabExperience lab;
+
         enum Phase { Waiting, WatchingMerger, Riding, SlidingEarth, EarthPause,
-                     RidingLigo, SlidingLigo, Done }
+                     Diving, EnteringLab, InLab, Done }
         Phase _phase = Phase.Waiting;
         public bool CanPilot => _phase == Phase.Waiting || _phase == Phase.EarthPause ||
-                                _phase == Phase.Done;
+                                _phase == Phase.InLab || _phase == Phase.Done;
         /// <summary>Replay/Reset/Load are only offered at the stable observation
         /// phases - mid-transit they are disabled and the methods no-op, so a
         /// wave preview can never freeze the journey without an escape.</summary>
@@ -78,7 +86,7 @@ namespace Project8.Story
         Quaternion _initialShipRot;
         bool _poseCaptured;
 
-        float _earthHitS, _ligoHitS;
+        float _earthHitS;
         Vector3 _rideOffset;
 
         /// <summary>Store the parked ship pose RESTART MISSION returns to. Called
@@ -105,20 +113,80 @@ namespace Project8.Story
             CaptureInitialPose();
 
             _earthHitS = SOf(earth != null ? earth.position : Vector3.zero) - 7f;
-            _ligoHitS = SOf(ligo != null ? ligo.position : Vector3.zero) - 10f;
             // Constant lateral offset from the wave axis: riding only changes the
             // along-axis coordinate, so the ship moves in one straight line.
             _rideOffset = ship.position - AxisPoint(SOf(ship.position));
 
-            Narrate("Rick: Welcome aboard. Dead ahead - seen side-on - a pair of black holes " +
-                    "is about to merge. Their collision will send ripples through spacetime " +
-                    "itself: gravitational waves. Press START MISSION when you are ready.",
-                    "Rick：欢迎登上飞船。正侧面方向上，一对黑洞即将合并，碰撞会在时空中激起引力波。准备好后点击「开始任务」。",
-                    "Rick: Welkom aan boord. Recht voor ons - van opzij gezien - staan twee " +
-                    "zwarte gaten op het punt samen te smelten. De botsing stuurt rimpelingen " +
-                    "door de ruimtetijd: zwaartekrachtgolven. Druk op MISSIE STARTEN.");
+            // Build the underground lab + tour + mission log BEFORE the first
+            // narration so every line is logged from the very start.
+            lab = gameObject.AddComponent<LabExperience>();
+            lab.Build(this);
+
             SetButtons(true, false, false);
-            UiSpotlightTarget.Show("start");
+            StartCoroutine(Intro());
+        }
+
+        /// <summary>Opening monologue: who Rick is, where the user is, what
+        /// gravity is (the bedsheet analogy they are literally looking at) and
+        /// how to call Rick later - the avatar flashes while it is mentioned.</summary>
+        System.Collections.IEnumerator Intro()
+        {
+            Narrate("Rick: Hi - I'm Rick, your AI guide today. You're sitting in a " +
+                    "spaceship drifting near two black holes that are about to merge.",
+                    "Rick：你好，我是 Rick，今天的 AI 讲解助手。你现在正坐在一艘宇宙飞船里，" +
+                    "漂浮在两个即将相撞的黑洞附近。",
+                    "Rick: Hoi - ik ben Rick, je AI-gids vandaag. Je zit in een " +
+                    "ruimteschip vlak bij twee zwarte gaten die gaan samensmelten.");
+            while (subtitles != null && subtitles.Busy) yield return null;
+
+            Narrate("Rick: What is gravity? Imagine a bedsheet - drop a ball on it and " +
+                    "the sheet dips, so smaller things roll toward it. Stars do the same " +
+                    "thing to space itself: that dip IS gravity. You can see it on the " +
+                    "sheet right below the black holes.",
+                    "Rick：什么是引力？想象一张床单——放个球上去，床单被压出一个坑，周围的" +
+                    "小东西就会往坑里滚。星球对时空做的事一模一样：压弯时空就是引力。" +
+                    "看黑洞脚下那张床单，就是这个效果。",
+                    "Rick: Wat is zwaartekracht? Denk aan een laken - leg er een bal op " +
+                    "en het zakt in, dus kleinere dingen rollen ernaartoe. Sterren doen " +
+                    "datzelfde met de ruimte zelf. Kijk naar het laken onder de zwarte gaten.");
+            while (subtitles != null && subtitles.Busy) yield return null;
+
+            Narrate("Rick: When these two monsters spiral and collide, the sheet shakes " +
+                    "hard - those ripples racing outward are gravitational waves. And " +
+                    "whenever you want to ask me anything, tap the glowing RICK button " +
+                    "in your lower right.",
+                    "Rick：当这两个大家伙互绕相撞时，床单会剧烈抖动——向外扩散的波纹就是" +
+                    "引力波。想问我任何问题，随时点右下角的 RICK 按钮呼叫我。",
+                    "Rick: Als deze twee reuzen spiraliseren en botsen, schudt het laken - " +
+                    "die rimpelingen zijn zwaartekrachtgolven. Wil je me iets vragen? " +
+                    "Tik op de RICK-knop rechtsonder.");
+            UiSpotlightTarget.Show("rick-avatar");
+            float t0 = Time.unscaledTime;
+            while (Time.unscaledTime - t0 < 4f) yield return null;
+            UiSpotlightTarget.Clear();
+
+            Narrate("Rick: Ahead of us - seen side-on - the pair is about to crash. " +
+                    "That collision sends ripples through space itself. Press " +
+                    "START MISSION when you are ready.",
+                    "Rick：正前方侧面视角，这对黑洞即将相撞，碰撞会在空间中激起涟漪。" +
+                    "准备好后点「开始任务」。",
+                    "Rick: Recht voor ons - van opzij - gaan ze bijna botsen. Druk op " +
+                    "MISSIE STARTEN als je klaar bent.");
+            StartCoroutine(SpotlightAfter("start", 0f));
+        }
+
+        /// <summary>Light a control only AFTER the narration that mentions it has
+        /// fully played - not while Rick is still explaining. holdSeconds <= 0
+        /// keeps it lit until the next cue replaces it.</summary>
+        System.Collections.IEnumerator SpotlightAfter(string id, float holdSeconds)
+        {
+            while (subtitles != null && subtitles.Busy) yield return null;
+            UiSpotlightTarget.Show(id);
+            if (holdSeconds > 0f)
+            {
+                yield return new WaitForSeconds(holdSeconds);
+                UiSpotlightTarget.Clear();
+            }
         }
 
         float SOf(Vector3 p) => Vector3.Dot(p - model.Origin, model.PropagationDirection);
@@ -128,6 +196,7 @@ namespace Project8.Story
         {
             if (_phase == Phase.Waiting) StartMission();
             else if (_phase == Phase.EarthPause) ContinueMission();
+            else if (_phase == Phase.InLab && lab != null) lab.NextStep();
             else if (_phase == Phase.Done) RestartMission();
         }
 
@@ -143,30 +212,63 @@ namespace Project8.Story
             _rideOffset = ship.position - AxisPoint(SOf(ship.position));
             _phase = Phase.WatchingMerger;
             simulation.RestartAt(0f, true);
-            Narrate("Rick: Simulation released. Stay put - watch them spiral inward, faster " +
-                    "and faster, until they collide. We only move once the wave is born.",
-                    "Rick：模拟已启动。飞船保持不动——观察它们越转越快直到碰撞。引力波产生之后我们才会动身。",
-                    "Rick: Simulatie vrijgegeven. Blijf staan - zie ze sneller en sneller " +
-                    "naar elkaar spiraliseren tot ze botsen. We bewegen pas als de golf er is.");
+            Narrate("Rick: Simulation released. Stay put and watch them spiral inward, " +
+                    "faster and faster, until they collide. We only move once the " +
+                    "wave is born.",
+                    "Rick：模拟开始了。留在原地看它们越转越快，直到撞在一起。" +
+                    "引力波诞生之后我们才动身。",
+                    "Rick: Simulatie gestart. Blijf staan en zie ze sneller en sneller " +
+                    "naar elkaar spiraliseren tot ze botsen. We bewegen pas als de " +
+                    "golf er is.");
             SetButtons(false, false, false);
-            UiSpotlightTarget.Show("play");
+            StartCoroutine(SpotlightAfter("play", 8f));
         }
 
-        /// <summary>CONTINUE at the Earth stop: leave Earth and ride on to the
-        /// interferometer parked further down the wave line.</summary>
+        /// <summary>CONTINUE at the Earth stop: the ship dives toward the planet and
+        /// sinks into the crust - the underground lab takes over from there.</summary>
         public void ContinueMission()
         {
             if (_phase != Phase.EarthPause) return;
             _preview = false;         // leave any wave preview and resume travel
             simulation.Play();
-            _phase = Phase.RidingLigo;
-            _rideOffset = ship.position - AxisPoint(SOf(ship.position));
-            Narrate("Rick: Onward - the wave does not stop at Earth. It rolls on toward a " +
-                    "model of the Einstein Telescope further down the line.",
-                    "Rick：继续前进——波不会在地球停下，它继续向前，前往下游的爱因斯坦望远镜模型。",
-                    "Rick: Verder - de golf stopt niet bij de Aarde. Ze rolt door naar een " +
-                    "model van de Einstein Telescope verderop.");
+            _phase = Phase.Diving;
+            Narrate("Rick: Hold on - we are diving into the Earth. Deep under our feet " +
+                    "sits the lab where the Einstein Telescope detects the wave. " +
+                    "Following me down.",
+                    "Rick：坐稳——我们要潜进地球内部了。在我们脚下的深处有一间实验室，" +
+                    "爱因斯坦望远镜就在那里探测引力波。跟我下去。",
+                    "Rick: Hou je vast - we duiken de aarde in. Diep onder onze voeten " +
+                    "ligt het lab waar de Einstein Telescope de golf detecteert. " +
+                    "Volg me naar beneden.");
             SetButtons(false, false, false);
+            UiSpotlightTarget.Clear();
+            if (lab != null) lab.BeginDescent();
+            else OnLabArrived(); // safety: never trap the mission without the lab
+        }
+
+        /// <summary>Descent finished - the ship is parked on the lab pad; start the
+        /// guided step-by-step tour of the interferometer.</summary>
+        internal void OnLabArrived()
+        {
+            _phase = Phase.InLab;
+            if (lab != null) lab.StartTour();
+            UiSpotlightTarget.Show("lab-next");
+        }
+
+        /// <summary>The last tour step is done: hand control back and offer the
+        /// RESTART MISSION button on the dock.</summary>
+        internal void OnTourFinished()
+        {
+            _phase = Phase.Done;
+            Narrate("Rick: That is the whole detector - laser, splitter, arms, mirrors " +
+                    "and the flicker that betrays a passing wave. Wander around the lab " +
+                    "as long as you like, or press RESTART MISSION to fly the story again.",
+                    "Rick：探测器的原理讲完了——激光、分光镜、两臂、反射镜，还有出卖引力波" +
+                    "行踪的那一点闪烁。实验室里随便逛，或者点「重新开始任务」完整重看。",
+                    "Rick: Dat was de hele detector - laser, deler, armen, spiegels en " +
+                    "het flikkeren dat een voorbije golf verraadt. Kijk rustig rond in " +
+                    "het lab, of druk op MISSIE HERSTARTEN voor de hele reis opnieuw.");
+            SetButtons(false, false, true);
             UiSpotlightTarget.Clear();
         }
 
@@ -180,20 +282,23 @@ namespace Project8.Story
             ship.SetPositionAndRotation(_initialShipPos, _initialShipRot);
             _rideOffset = ship.position - AxisPoint(SOf(ship.position));
             simulation.RestartAt(0f, false);
-            Narrate("Rick: Welcome aboard. Dead ahead - seen side-on - a pair of black holes " +
-                    "is about to merge. Their collision will send ripples through spacetime " +
-                    "itself: gravitational waves. Press START MISSION when you are ready.",
-                    "Rick：欢迎登上飞船。正侧面方向上，一对黑洞即将合并，碰撞会在时空中激起引力波。准备好后点击「开始任务」。",
-                    "Rick: Welkom aan boord. Recht voor ons - van opzij gezien - staan twee " +
-                    "zwarte gaten op het punt samen te smelten. De botsing stuurt rimpelingen " +
-                    "door de ruimtetijd: zwaartekrachtgolven. Druk op MISSIE STARTEN.");
+            if (lab != null) lab.ResetTour();
+            Narrate("Rick: Welcome aboard. Ahead of us - seen side-on - two black holes " +
+                    "are about to crash into each other. That collision sends ripples " +
+                    "through space itself: gravitational waves. Press START MISSION " +
+                    "when you are ready.",
+                    "Rick：欢迎上船。前方侧面视角有一对黑洞即将相撞，撞击会在空间中激起" +
+                    "涟漪——这就是引力波。准备好后点「开始任务」。",
+                    "Rick: Welkom aan boord. Voor ons - van opzij - staan twee zwarte " +
+                    "gaten op het punt te botsen. Die klap stuurt rimpelingen door de " +
+                    "ruimte zelf: zwaartekrachtgolven. Druk op MISSIE STARTEN.");
             SetButtons(true, false, false);
         }
 
         // ------------------------------------------------- preview transport --
         /// <summary>Where the user is currently observing: binary before Earth,
-        /// Earth at the Earth stop or while sliding there, the telescope at the
-        /// telescope leg or when done.</summary>
+        /// Earth at the Earth stop or while sliding there, the lab's demo
+        /// interferometer once we have gone underground.</summary>
         Vector3 PreviewFocus()
         {
             switch (_phase)
@@ -202,10 +307,13 @@ namespace Project8.Story
                 case Phase.SlidingEarth:
                 case Phase.Riding:
                     return earth != null ? earth.position : binary.position;
-                case Phase.RidingLigo:
-                case Phase.SlidingLigo:
+                case Phase.Diving:
+                case Phase.EnteringLab:
+                case Phase.InLab:
                 case Phase.Done:
-                    return ligo != null ? ligo.position : binary.position;
+                    return lab != null && lab.Ready
+                        ? lab.FocusPoint
+                        : (ligo != null ? ligo.position : binary.position);
                 default:
                     return binary != null ? binary.position : ship.position;
             }
@@ -231,6 +339,18 @@ namespace Project8.Story
             float start = PreviewStartTime();
             _preview = true;
             simulation.RestartAt(start, false);
+        }
+
+        /// <summary>Lab tour variant: land the wave on an explicit focus point -
+        /// the step that shows the wave arriving replays it at the demo bench.</summary>
+        public void ReplayWaveAtFocus(Vector3 focus)
+        {
+            float v = model != null && model.parameters != null
+                ? Mathf.Max(model.parameters.visualizationSpeedMps, 1e-4f) : 1f;
+            float delay = model != null ? model.emissionDelay : 0f;
+            float dist = model != null ? model.PropagationDistance(focus) : 0f;
+            _preview = true;
+            simulation.RestartAt(Mathf.Max(0f, delay + dist / v - 1f), true);
         }
 
         float PreviewStartTime()
@@ -268,40 +388,29 @@ namespace Project8.Story
                     if (merged && s >= SOf(ship.position) + departLeadMeters)
                     {
                         _phase = Phase.Riding;
-                        Narrate("Rick: The wave is out - and we move with it. We trail just " +
-                                "behind the wavefront so you can watch space stretch and " +
-                                "squeeze all the way to Earth.",
-                                "Rick：引力波已经产生——我们开始跟随。飞船始终比波前慢一点点，" +
-                                "你能一路看着空间拉伸挤压直到地球。",
-                                "Rick: De golf is er - en we bewegen mee. We blijven net " +
-                                "achter het golffront zodat je de ruimte de hele weg naar " +
-                                "de Aarde ziet uitrekken en samendrukken.");
+                        Narrate("Rick: The wave is out - and we ride along with it. We " +
+                                "stay just behind the front so you can watch space " +
+                                "stretch and squeeze all the way to Earth.",
+                                "Rick：引力波出现了——我们跟着它一起走。飞船始终跟在波前" +
+                                "后面一点点，你能一路看着空间拉伸、挤压，直到地球。",
+                                "Rick: De golf is er - en we surfen mee. We blijven net " +
+                                "achter het golffront zodat je de ruimte helemaal tot " +
+                                "de Aarde kunt zien uitrekken en samendrukken.");
                     }
                     break;
                 }
 
                 case Phase.Riding:
-                case Phase.RidingLigo:
                 {
                     RideBehindWavefront(s);
-                    if (_phase == Phase.Riding && s >= _earthHitS)
+                    if (s >= _earthHitS)
                     {
                         _phase = Phase.SlidingEarth;
-                        Narrate("Rick: The wave just reached Earth. Sliding into a side-on " +
-                                "view of the whole planet.",
-                                "Rick：波刚刚抵达地球。飞船横向滑入能看全地球的侧面观察位。",
-                                "Rick: De golf heeft de Aarde bereikt. We schuiven zijwaarts " +
-                                "naar een volledig zijaanzicht van de planeet.");
-                    }
-                    else if (_phase == Phase.RidingLigo && s >= _ligoHitS)
-                    {
-                        _phase = Phase.SlidingLigo;
-                        Narrate("Rick: Past Earth the wave reaches the Einstein Telescope " +
-                                "observatory model. Parking above it for the overview.",
-                                "Rick：波穿过地球后抵达爱因斯坦望远镜观测站模型。飞船正升到它上方俯视。",
-                                "Rick: Voorbij de Aarde bereikt de golf het " +
-                                "Einstein Telescope-observatoriummodel. We parkeren " +
-                                "er boven voor het overzicht.");
+                        Narrate("Rick: The wave just reached Earth. Sliding into a " +
+                                "side-on view of the whole planet.",
+                                "Rick：引力波刚到地球。飞船滑入能看到整个地球的侧面观察位。",
+                                "Rick: De golf heeft de Aarde bereikt. We schuiven naar " +
+                                "een volledig zijaanzicht van de planeet.");
                     }
                     break;
                 }
@@ -312,31 +421,27 @@ namespace Project8.Story
                     if (SlideTo(earth.position + earthWatchOffset))
                     {
                         _phase = Phase.EarthPause;
-                        Narrate("Rick: Parked 90 degrees off the wave path - the whole planet " +
-                                "is in view. Try the CONTROLS panel: change the amplitude, " +
-                                "frequency or exaggeration and watch how the wave through " +
-                                "Earth responds. Press CONTINUE when you want to fly on to " +
-                                "the Einstein Telescope model.",
-                                "Rick：已停在波路径侧面 90 度位置，地球全貌可见。现在可以打开「控制台」面板：" +
-                                "调整振幅、频率或夸张度，观察穿过地球的波如何变化。玩好了点「继续」，前往爱因斯坦望远镜模型。",
-                                "Rick: Geparkeerd op 90 graden van het golfpad - de hele planeet " +
-                                "is zichtbaar. Probeer het BESTURING-paneel: verander amplitude, " +
-                                "frequentie of overdrijving en kijk hoe de golf door de Aarde " +
-                                "reageert. Druk op DOORGAAN om naar het Einstein " +
-                                "Telescope-model te vliegen.");
+                        Narrate("Rick: Parked side-on - the whole planet is in view. " +
+                                "Play with the CONTROLS panel if you like: change the " +
+                                "amplitude, frequency or exaggeration and watch the " +
+                                "wave through Earth respond. Press CONTINUE and we dive " +
+                                "underground to see how the detector feels it.",
+                                "Rick：已停在侧面观察位，地球全貌可见。可以先玩一下「控制台」：" +
+                                "调调振幅、频率或夸张度，看穿过地球的波怎么变化。玩好点「继续」，" +
+                                "我们潜入地下看探测器是怎么感觉到它的。",
+                                "Rick: Geparkeerd opzij - de hele planeet is zichtbaar. " +
+                                "Speel gerust met het BESTURING-paneel: verander " +
+                                "amplitude, frequentie of overdrijving en kijk hoe de " +
+                                "golf door de Aarde reageert. Druk op DOORGAAN en we " +
+                                "duiken ondergronds om te zien hoe de detector hem voelt.");
                         SetButtons(false, true, false);
                         UiSpotlightTarget.Show("continue");
                     }
                     break;
                 }
 
-                case Phase.SlidingLigo:
-                {
-                    if (ligo == null) { FinishMission(); break; }
-                    if (SlideTo(ligo.position + ligoWatchOffset))
-                        FinishMission();
-                    break;
-                }
+                // Diving / EnteringLab: the lab's descent coroutine owns the ship.
+                // InLab: free flight + the guided tour; no further choreography.
             }
         }
 
@@ -357,42 +462,10 @@ namespace Project8.Story
             return (ship.position - spot).sqrMagnitude < 0.5f;
         }
 
-        void FinishMission()
-        {
-            _phase = Phase.Done;
-            Narrate("Rick: This is the Einstein Telescope model - three interferometers " +
-                    "arranged in an equilateral triangle, each station's arms meeting at " +
-                    "60 degrees, and each station nesting a low- and a high-frequency " +
-                    "instrument. That is the real 2020 design baseline, shown as a " +
-                    "teaching cutaway: 10 km sides drawn 12 metres wide, light slowed, " +
-                    "mirror motion exaggerated, and the two lanes share one simplified " +
-                    "strain - the real cavities, suspensions and noise curves are not " +
-                    "simulated. A wave shifts each arm's round trip by a different " +
-                    "amount, so every dark port reads differently. Pick D1, D2 or D3 in " +
-                    "the ET INSPECTOR to look inside one station. Press RESTART MISSION " +
-                    "to fly it again.",
-                    "Rick：这是爱因斯坦望远镜（ET）模型——三个干涉仪排成等边三角形，每个" +
-                    "台站两臂夹角 60 度，每个台站内嵌低频（LF）与高频（HF）两台仪器。这" +
-                    "是真实的 2020 设计基线的教学剖面：10 公里边长画成 12 米宽，光被放慢、" +
-                    "镜面运动被夸大，两条光路共用同一简化应变——真实的法布里-珀罗腔、悬挂" +
-                    "系统和噪声曲线并未模拟。引力波使每条臂的往返光程变化不同，各暗端口" +
-                    "读数因此不同。在 ET INSPECTOR 中选择 D1、D2、D3 查看单台站光路。" +
-                    "点击「重新开始任务」可完整重看。",
-                    "Rick: Dit is het Einstein Telescope-model - drie interferometers in " +
-                    "een gelijkzijdige driehoek, elk station met armen onder 60 graden en " +
-                    "elk station met een laag- en een hoogfrequent instrument. Dat is de " +
-                    "echte ontwerpbasislijn uit 2020, getoond als leermodel: 10 km-zijden " +
-                    "12 meter breed getekend, licht vertraagd, spiegelbeweging overdreven " +
-                    "en beide banen delen dezelfde vereenvoudigde rek - de echte caviteiten, " +
-                    "ophangingen en ruiscurves worden niet gesimuleerd. Een golf verandert " +
-                    "elke retourtijd anders, dus elke donkere poort leest anders. Kies D1, " +
-                    "D2 of D3 in de ET INSPECTOR om in een station te kijken. Druk op " +
-                    "MISSIE HERSTARTEN om alles opnieuw te zien.");
-            SetButtons(false, false, true);
-            UiSpotlightTarget.Show("tab-et");
-        }
-
-        void Narrate(string english, string chinese, string dutch = null)
+        /// <summary>Three-language narration through the shared subtitle presenter;
+        /// internal so the lab tour can speak through the same channel (and land
+        /// in the mission log automatically).</summary>
+        internal void Narrate(string english, string chinese, string dutch = null)
         {
             string chosen = ExperienceSettings.IsChinese ? chinese
                 : ExperienceSettings.IsDutch && dutch != null ? dutch : english;

@@ -56,6 +56,7 @@ namespace Project8.UI
         {
             _cjk = ExperienceSettings.IsChinese;
             ApplyFont();
+            MissionLogUI.Add("Rick", narration);
             PaginateInto(narration, _story);
             _storyIndex = 0;
             // Per-page speech keeps voice and text in lock-step: each page is
@@ -75,6 +76,11 @@ namespace Project8.UI
         {
             _cjk = ExperienceSettings.IsChinese;
             ApplyFont();
+            // The transient "thinking" placeholder is not a real answer -
+            // keep it out of the log.
+            if (display.IndexOf("thinking", System.StringComparison.OrdinalIgnoreCase) < 0 &&
+                !display.Contains("思考中") && !display.Contains("denken"))
+                MissionLogUI.Add("Rick", display);
             PaginateInto(display, _answer);
             _answerIndex = 0;
             if (_answer.Count > 0) _showingAnswer = true;
@@ -99,6 +105,10 @@ namespace Project8.UI
         /// <summary>Pages remaining or currently showing (tests/status).</summary>
         public int PendingStoryPages => _story.Count - _storyIndex;
         public bool IsShowingAnswer => _showingAnswer;
+        /// <summary>True while any narration/answer is still on screen - used to
+        /// fire "after the explanation finishes" cues like button spotlights.</summary>
+        public bool Busy =>
+            (_showingAnswer ? _answer.Count - _answerIndex : _story.Count - _storyIndex) > 0;
 
         void Update()
         {

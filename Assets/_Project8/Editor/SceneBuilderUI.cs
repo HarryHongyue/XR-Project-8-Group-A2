@@ -342,7 +342,7 @@ namespace Project8.EditorTools
             Project8.UI.RickVoice voice, RickSubtitles subtitles)
         {
             var rt = MakeWorldCanvas(ship, "RickAvatar", new Vector2(480f, 260f),
-                new Vector3(0.80f, 0.92f, 1.20f), 0.0011f, eye, interactive: true);
+                new Vector3(0.80f, 1.02f, 1.20f), 0.0011f, eye, interactive: true);
             // No root hit-area here: the composer opens/closes, so a full-size
             // blocker would swallow mouse-look rays across an invisible 480x260
             // region. Only the open composer window and the avatar chip (itself
@@ -362,7 +362,7 @@ namespace Project8.EditorTools
             chat.voiceInput = vi;
 
             var window = NewUIObject("ChatWindow", rt);
-            window.anchoredPosition = new Vector2(0f, 45f);
+            window.anchoredPosition = new Vector2(70f, 60f);
             window.sizeDelta = new Vector2(460f, 160f);
             PanelHitArea(window);
             GlassBG(window, GlassRole.Panel, GlassPanelTint);
@@ -400,6 +400,7 @@ namespace Project8.EditorTools
                 TextAnchor.MiddleCenter, Color.white, Vector2.zero, avatar.sizeDelta);
             var avHover = avatar.gameObject.AddComponent<ButtonLabelHover>();
             avHover.label = avText;
+            avatar.gameObject.AddComponent<UiSpotlightTarget>().id = "rick-avatar";
 
             UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
         }
