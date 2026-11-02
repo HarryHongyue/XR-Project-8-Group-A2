@@ -401,13 +401,64 @@ namespace Project8.EditorTools
             avColors.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
             avBtn.colors = avColors;
             UnityEventTools.AddPersistentListener(avBtn.onClick, chat.ToggleChat);
-            var avText = MakeText(avatar, "Face", "RICK", 15, FontStyle.Bold,
-                TextAnchor.MiddleCenter, Color.white, Vector2.zero, avatar.sizeDelta);
+            // Procedural cartoon face so the button reads as a character, not a
+            // label: pale skin, spiky cyan hair, unibrow, baggy eyes, drool.
+            var face = NewUIObject("Face", avatar);
+            face.anchorMin = Vector2.zero; face.anchorMax = Vector2.one;
+            face.offsetMin = new Vector2(6f, 16f); face.offsetMax = new Vector2(-6f, -4f);
+            var faceImg = face.gameObject.AddComponent<Image>();
+            faceImg.sprite = RickFaceSprite();
+            faceImg.raycastTarget = false;
+            var avText = MakeText(avatar, "Tag", "RICK", 11, FontStyle.Bold,
+                TextAnchor.MiddleCenter, Color.white, new Vector2(0f, -34f),
+                new Vector2(80f, 20f));
             var avHover = avatar.gameObject.AddComponent<ButtonLabelHover>();
             avHover.label = avText;
             avatar.gameObject.AddComponent<UiSpotlightTarget>().id = "rick-avatar";
 
             UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
+        }
+
+        /// <summary>Hand-drawn 64x64 cartoon Rick face: pale oval skin, spiky
+        /// cyan hair across the top, one unibrow, two baggy eyes and a drool
+        /// drop - instantly readable at 80px without shipping any artwork.</summary>
+        static Sprite RickFaceSprite()
+        {
+            const int S = 64;
+            var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
+            { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var clear = new Color(0, 0, 0, 0);
+            var skin = new Color(0.93f, 0.82f, 0.72f);
+            var hair = new Color(0.45f, 0.78f, 0.95f);
+            var dark = new Color(0.10f, 0.08f, 0.10f);
+            for (int y = 0; y < S; y++)
+                for (int x = 0; x < S; x++)
+                {
+                    float nx = (x - 32f) / 32f, ny = (y - 30f) / 30f;
+                    float d = nx * nx + ny * ny;
+                    Color c = clear;
+                    if (d < 0.95f && y < 46) c = skin;                     // face oval
+                    if (y >= 46 && d < 1.0f)                             // hair band
+                    {
+                        int spike = ((x + (y - 46) * 2) / 8) % 2;
+                        c = spike == 0 ? hair : hair * 0.85f;
+                    }
+                    if (y >= 40 && y < 46 && Mathf.Abs(nx) < 0.85f) c = hair; // hairline
+                    if (y == 30 && Mathf.Abs(nx) < 0.55f) c = dark;         // unibrow
+                    if (y >= 24 && y <= 29)                               // eyes
+                    {
+                        float ex = Mathf.Abs(nx) - 0.28f;
+                        if (ex * ex + Mathf.Pow((y - 26.5f) / 4.5f, 2) < 0.06f) c = Color.white;
+                        if (ex * ex + Mathf.Pow((y - 26.5f) / 3f, 2) < 0.015f) c = dark;
+                    }
+                    if (y >= 19 && y <= 22 && Mathf.Abs(nx) > 0.2f &&
+                        Mathf.Abs(nx) < 0.36f) c = skin * 0.82f;          // eye bags
+                    if (y >= 12 && y <= 15 && Mathf.Abs(nx) < 0.30f) c = dark * 0.8f; // mouth
+                    if (y >= 8 && y <= 11 && Mathf.Abs(nx) < 0.06f) c = hair; // drool
+                    tex.SetPixel(x, y, c);
+                }
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f));
         }
 
         // -------------------------------------------------- control panel ---
