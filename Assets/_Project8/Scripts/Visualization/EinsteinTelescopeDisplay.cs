@@ -96,13 +96,20 @@ namespace Project8.Visualization
                 }
             }
             // Selector button feedback: the chosen station is lit, others dim.
+            // The lit face is near-white so the label flips dark, matching the
+            // tab inversion everywhere else.
             if (stationButtons != null)
                 for (int i = 0; i < stationButtons.Length; i++)
-                    if (stationButtons[i] != null &&
-                        stationButtons[i].targetGraphic != null)
+                {
+                    if (stationButtons[i] == null) continue;
+                    if (stationButtons[i].targetGraphic != null)
                         stationButtons[i].targetGraphic.color =
                             i == SelectedDetector ? LaneLit
                                 : new Color(.7f, .74f, .85f, .55f);
+                    var hover = stationButtons[i]
+                        .GetComponent<Project8.UI.ButtonLabelHover>();
+                    if (hover != null) hover.SetHot(i == SelectedDetector);
+                }
             if (statusText != null)
             {
                 if (ExperienceSettings.IsChinese)

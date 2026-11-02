@@ -47,6 +47,9 @@ namespace Project8.Story
         public Button startButton;
         public Button continueButton;
         public Button restartButton;
+        [Tooltip("Lab tour NEXT button on the mission dock - visible only while " +
+                 "the guided underground tour is running.")]
+        public Button nextButton;
 
         [Header("Choreography")]
         [Tooltip("How far past the ship the wave must travel before we start moving. " +
@@ -252,6 +255,7 @@ namespace Project8.Story
         {
             _phase = Phase.InLab;
             if (lab != null) lab.StartTour();
+            if (nextButton != null) nextButton.gameObject.SetActive(true);
             UiSpotlightTarget.Show("lab-next");
         }
 
@@ -269,6 +273,7 @@ namespace Project8.Story
                     "het flikkeren dat een voorbije golf verraadt. Kijk rustig rond in " +
                     "het lab, of druk op MISSIE HERSTARTEN voor de hele reis opnieuw.");
             SetButtons(false, false, true);
+            if (nextButton != null) nextButton.gameObject.SetActive(false);
             UiSpotlightTarget.Clear();
         }
 

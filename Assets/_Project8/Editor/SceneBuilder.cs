@@ -370,14 +370,29 @@ namespace Project8.EditorTools
                   "it, and the passing wave ripples across it. The deformation is hugely " +
                   "exaggerated - the real stretching of space is far too small to see."),
                 E(new[]{"einstein","telescope","et ","triangle","detector","interferometer","ligo"},
-                  "The triangular facility at the end of the mission is the Einstein " +
-                  "Telescope model: three interferometers in an equilateral triangle, each " +
-                  "station's arms at 60 degrees, and each station nesting a low- and a " +
-                  "high-frequency instrument - the real 2020 design baseline. Like LIGO's " +
-                  "Michelsons it splits laser light, sends it down two arms and recombines " +
-                  "it at the splitter; a wave shifts each round trip differently so the " +
-                  "dark ports read differently. Our model shows the principle only - no " +
-                  "cavities, suspensions or noise curves."),
+                  "The Einstein Telescope model sits in the underground lab you reach " +
+                  "by diving into the Earth: three interferometers in an equilateral " +
+                  "triangle, each station's arms at 60 degrees, and each station " +
+                  "nesting a low- and a high-frequency instrument - the real 2020 " +
+                  "design baseline. The L-shaped demo on the bench shows how ONE such " +
+                  "instrument works. Our model shows the principle only - no cavities, " +
+                  "suspensions or noise curves."),
+                E(new[]{"laser","beam","light","splitter","mirror"},
+                  "The laser makes light of one pure colour. The tilted glass plate - " +
+                  "the beam splitter - sends half the light down each of the two arms. " +
+                  "Mirrors at the ends send it back, and the returning beams overlap " +
+                  "again at the splitter."),
+                E(new[]{"interference","interfere","dark port","dark","photodetector","flicker"},
+                  "Where the two beams overlap again they interfere. With equal arms " +
+                  "every wave peak lands on a wave dip and cancels - the detector " +
+                  "stays dark. A passing wave changes one arm differently from the " +
+                  "other, the cancellation breaks and light flickers onto the " +
+                  "photodetector. That flicker is the measurement."),
+                E(new[]{"underground","lab","laboratory","cavern","deep","buried"},
+                  "Real gravitational-wave detectors sit in the quietest places " +
+                  "engineers can find - the Einstein Telescope is designed to go " +
+                  "~200 metres underground - because wind, traffic and tiny tremors " +
+                  "would shake the mirrors and drown the signal. Our lab models that."),
                 E(new[]{"lf","hf","low frequency","high frequency","lane","xylophone"},
                   "Each ET corner station actually hosts TWO interferometers: one " +
                   "cryogenic low-frequency instrument and one high-frequency instrument - " +
@@ -692,6 +707,11 @@ namespace Project8.EditorTools
             Vector3 eyeWorld = ship.transform.TransformPoint(eye);
             var et = BuildEinsteinTelescope(mats, model, controller,
                 new Vector3(82f, 1.5f, 26f), eyeWorld);
+            // The observatory moved underground - the lab tour is the single
+            // canonical ET now. The in-space twin stays in the scene (the
+            // prediction task still reads its station positions) but is never
+            // shown to the user.
+            et.gameObject.SetActive(false);
 
             // --- cockpit UI -------------------------------------------------------
             // One shared subtitle strip (story narration + Rick's answers), a

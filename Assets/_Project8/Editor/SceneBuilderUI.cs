@@ -211,6 +211,11 @@ namespace Project8.EditorTools
                 Vector2.zero, 240f, story.RestartMission);
             story.continueButton.gameObject.SetActive(false);
             story.restartButton.gameObject.SetActive(false);
+            // Lab-tour NEXT lives on the same dock - the guided tour no longer
+            // needs its own floating mini panel to advance.
+            story.nextButton = Btn(rt, "Btn_Next", "NEXT",
+                Vector2.zero, 240f, story.Advance);
+            story.nextButton.gameObject.SetActive(false);
             story.startButton.gameObject.AddComponent<UiSpotlightTarget>().id = "start";
             story.continueButton.gameObject.AddComponent<UiSpotlightTarget>().id = "continue";
             story.restartButton.gameObject.AddComponent<UiSpotlightTarget>().id = "restart";

@@ -31,6 +31,11 @@ namespace Project8.UI
         void OnDisable() { _hot = false; Apply(); }
         void OnEnable() { Apply(); }
 
+        /// <summary>External "selected" state (toggle-like buttons such as the
+        /// D1/D2/D3 station pickers): keeps the label dark on the lit face
+        /// even after the pointer leaves.</summary>
+        public void SetHot(bool on) { _hot = on; Apply(); }
+
         void Apply()
         {
             if (label != null) label.color = _hot ? labelHot : labelNormal;
