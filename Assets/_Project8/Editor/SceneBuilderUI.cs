@@ -30,7 +30,7 @@ namespace Project8.EditorTools
         static readonly Color GlassButtonTint = new Color(0.16f, 0.24f, 0.36f, 0.55f);
         static readonly Color GlassInsetTint = new Color(0.05f, 0.08f, 0.13f, 0.62f);
         static readonly Color GlassCardTint = new Color(0.12f, 0.18f, 0.28f, 0.50f);
-        static readonly Color GlassShadowTint = new Color(0f, 0f, 0f, 0.38f);
+        static readonly Color GlassShadowTint = new Color(0f, 0f, 0f, 0.18f);
         static readonly Color InkPrimary = new Color(0.95f, 0.97f, 1f);
         static readonly Color InkSecondary = new Color(0.72f, 0.76f, 0.85f);
         static readonly Color InkFaint = new Color(0.55f, 0.58f, 0.68f, 0.9f);
@@ -367,7 +367,7 @@ namespace Project8.EditorTools
             chat.voiceInput = vi;
 
             var window = NewUIObject("ChatWindow", rt);
-            window.anchoredPosition = new Vector2(70f, 60f);
+            window.anchoredPosition = new Vector2(95f, 70f);
             window.sizeDelta = new Vector2(460f, 160f);
             PanelHitArea(window);
             GlassBG(window, GlassRole.Panel, GlassPanelTint);
