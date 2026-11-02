@@ -18,12 +18,18 @@ namespace Project8.UI
     public class RickVoice : MonoBehaviour
     {
         [Range(0, 100)] public int volume = 90;
-        [Range(-10, 10)] public int rate = -1;
+        [Range(-10, 10)] public int rate = 2; // was -1: too slow vs the subtitles
         public bool muted;
+
+        /// <summary>True while a clip is being rendered or played - the subtitle
+        /// presenter holds each page on screen until speech finishes.</summary>
+        public bool IsSpeaking => _rendering ||
+            (_source != null && _source.isPlaying);
 
         AudioSource _source;
         int _job;
         bool _available;
+        bool _rendering;
 
         void Awake()
         {
@@ -95,6 +101,7 @@ namespace Project8.UI
         IEnumerator RenderAndPlay(string text)
         {
             int job = ++_job;
+            _rendering = true;
             if (_source.isPlaying) _source.Stop();
 
             string dir = Application.temporaryCachePath;
@@ -154,6 +161,7 @@ namespace Project8.UI
                 done = true;
             });
             while (!done) yield return null;
+            _rendering = false;
 
             if (job != _job || !File.Exists(wav)) yield break; // a newer line took over
             using (var req = UnityWebRequestMultimedia.GetAudioClip(

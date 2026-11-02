@@ -33,15 +33,14 @@ namespace Project8.UI
         const int MaxLineChars = 80;      // Latin wrap width
         const int MaxCjkCharsPerPage = 40;
         const int MaxLatinCharsPerPage = 110;
-        const float MinDwell = 3f, MaxDwell = 10f;
-        const float DwellPerChar = 0.055f;
+        const float MinDwell = 3f, MaxDwell = 14f;
+        const float DwellPerChar = 0.085f;
 
         readonly List<string> _story = new List<string>();
         int _storyIndex;
         readonly List<string> _answer = new List<string>();
         int _answerIndex;
         bool _showingAnswer;
-        string _pendingVoice;   // latest narration utterance waiting on an answer
         float _pageStart = -1f;
         Font _baseFont;
         bool _cjk;
@@ -55,13 +54,9 @@ namespace Project8.UI
             ApplyFont();
             PaginateInto(narration, _story);
             _storyIndex = 0;
-            // Voice: speak the whole utterance once - either now, or queued
-            // behind the AI answer that is currently being read aloud.
-            if (voice != null)
-            {
-                if (_showingAnswer) _pendingVoice = narration;
-                else voice.Speak(narration);
-            }
+            // Per-page speech keeps voice and text in lock-step: each page is
+            // spoken the moment it appears, and the next page waits until the
+            // clip finishes - no more text racing ahead of the audio.
             if (!_showingAnswer) _pageStart = -1f; // keep the answer's own clock
             RenderCurrent();
         }
@@ -81,8 +76,6 @@ namespace Project8.UI
             if (_answer.Count > 0) _showingAnswer = true;
             _pageStart = -1f;
             RenderCurrent();
-            if (voice != null && !string.IsNullOrEmpty(voiceText))
-                voice.Speak(voiceText);
         }
 
         void ApplyFont()
@@ -107,6 +100,8 @@ namespace Project8.UI
             var pages = _showingAnswer ? _answer : _story;
             int idx = _showingAnswer ? _answerIndex : _storyIndex;
             if (idx >= pages.Count || _pageStart < 0f) return;
+            // Hold the page while its line is still being spoken.
+            if (voice != null && voice.IsSpeaking) return;
 
             float dwell = Mathf.Clamp(pages[idx].Length * DwellPerChar, MinDwell, MaxDwell);
             if (Time.unscaledTime - _pageStart >= dwell) AdvancePage();
@@ -131,17 +126,16 @@ namespace Project8.UI
             {
                 if (_pageStart < 0f) _pageStart = Time.unscaledTime;
                 text.text = pages[idx];
+                // Speak exactly the text on screen - Speak() strips the
+                // "Rick: " prefix itself, and a newer page cancels the old clip.
+                if (voice != null) voice.Speak(pages[idx]);
                 return;
             }
             if (_showingAnswer)
             {
-                // Answer finished -> hand back to the latest story position and
-                // release the narration utterance queued behind it.
+                // Answer finished -> hand back to the latest story position.
                 _showingAnswer = false;
                 _pageStart = -1f;
-                if (_pendingVoice != null && voice != null)
-                    voice.Speak(_pendingVoice);
-                _pendingVoice = null;
                 RenderCurrent();
                 return;
             }
