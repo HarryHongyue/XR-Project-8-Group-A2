@@ -36,6 +36,7 @@ namespace Project8.EditorTools
     {
         static string ProjectRoot => Directory.GetParent(Application.dataPath).FullName;
         static string RequestPath => Path.Combine(ProjectRoot, ".tools", "et-ui-redesign-request.json");
+        static string BuildRequestPath => Path.Combine(ProjectRoot, ".tools", "build-request.json");
         /// <summary>Bumped whenever the verified code revision changes, so a
         /// fresh result cannot be confused with an older run.</summary>
         const string ResultRevision = "et-ui-redesign-2";
@@ -53,6 +54,7 @@ namespace Project8.EditorTools
             _nextPoll = EditorApplication.timeSinceStartup + 1.5;
             if (EditorApplication.isCompiling || EditorApplication.isUpdating ||
                 EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (File.Exists(BuildRequestPath)) { ConsumeBuild(); return; }
             if (!File.Exists(RequestPath)) return;
 
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -64,6 +66,38 @@ namespace Project8.EditorTools
                 return;
             }
             Execute(consumed, stamp);
+        }
+
+        /// <summary>Packaging flag: build the Windows EXE and the Quest APK
+        /// inside the already-open editor - no second Unity instance, no
+        /// project lock. Result lands in Logs/build_result.json.</summary>
+        static void ConsumeBuild()
+        {
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            string consumed = BuildRequestPath + ".consumed-" + stamp;
+            try { File.Move(BuildRequestPath, consumed); }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Project8] BuildRunner could not consume flag: {e.Message}");
+                return;
+            }
+            string status = "failure", error = "";
+            try
+            {
+                Debug.Log("[Project8] Build request consumed - building EXE + APK ...");
+                bool exe = QuestBuild.BuildWindowsExe();
+                bool apk = QuestBuild.BuildQuestApk();
+                status = exe && apk ? "success" : "partial";
+                if (!exe) error += "exe failed; ";
+                if (!apk) error += "apk failed; ";
+            }
+            catch (Exception e) { error = e.Message; Debug.LogException(e); }
+            File.WriteAllText(Path.Combine(ProjectRoot, "Logs", "build_result.json"),
+                "{\"status\":\"" + status + "\",\"finishedUtc\":\"" +
+                DateTime.UtcNow.ToString("o") + "\",\"error\":\"" +
+                error.Replace("\"", "'") + "\",\"consumedFlag\":\"" +
+                consumed.Replace("\\", "\\\\") + "\"}");
+            Debug.Log($"[Project8] Build request finished: {status} {error}");
         }
 
         static void Execute(string consumedFlag, string stamp)

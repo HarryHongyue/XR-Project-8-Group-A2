@@ -17,6 +17,8 @@ namespace Project8.EditorTools
     {
         const string PackageId = "com.ZuydXRGroupA2.Project8GW";
         const string ApkPath = "Builds/Project8-Quest3.apk";
+        const string ExePath = "Builds/Windows/Project8.exe";
+        const string AppVersion = "0.5.0";
         const string XrSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
 
         /// <summary>Everything a Quest APK needs: IL2CPP+ARM64, minSdk 29, package
@@ -32,7 +34,11 @@ namespace Project8.EditorTools
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
             PlayerSettings.SetApplicationIdentifier(android, PackageId);
-            // AITutor talks to the NVIDIA endpoint over HTTPS.
+            PlayerSettings.bundleVersion = AppVersion;
+            PlayerSettings.Android.bundleVersionCode = 5; // 0.5.0 -> code 5
+            // AITutor talks to the NVIDIA endpoint over HTTPS; VoiceInteraction
+            // uses Microphone (RECORD_AUDIO is auto-added by Unity for mic use
+            // and requested at runtime before first recording).
             PlayerSettings.Android.forceInternetPermission = true;
 
             EnsureAndroidOpenXRLoader();
@@ -93,7 +99,7 @@ namespace Project8.EditorTools
         }
 
         [MenuItem("Project 8/Build Quest APK")]
-        public static void BuildQuestApk()
+        public static bool BuildQuestApk()
         {
             ConfigureAndroidForQuest();
             var scenes = EditorBuildSettings.scenes
@@ -109,7 +115,42 @@ namespace Project8.EditorTools
             var summary = report.summary;
             Debug.Log($"[Project8] APK build: {summary.result} - {ApkPath} " +
                       $"({summary.totalSize / (1024f * 1024f):F1} MB)");
-            EditorApplication.Exit(summary.result == BuildResult.Succeeded ? 0 : 1);
+            if (Application.isBatchMode)
+                EditorApplication.Exit(summary.result == BuildResult.Succeeded ? 0 : 1);
+            return summary.result == BuildResult.Succeeded;
+        }
+
+        /// <summary>Windows standalone player - same scenes, desktop fallback
+        /// (device simulator) when no headset is present.</summary>
+        public static bool BuildWindowsExe()
+        {
+            PlayerSettings.bundleVersion = AppVersion;
+            var scenes = EditorBuildSettings.scenes
+                .Where(s => s.enabled).Select(s => s.path).ToArray();
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = scenes,
+                locationPathName = ExePath,
+                target = BuildTarget.StandaloneWindows64,
+                targetGroup = BuildTargetGroup.Standalone,
+                options = BuildOptions.None
+            });
+            var summary = report.summary;
+            Debug.Log($"[Project8] EXE build: {summary.result} - {ExePath} " +
+                      $"({summary.totalSize / (1024f * 1024f):F1} MB)");
+            return summary.result == BuildResult.Succeeded;
+        }
+
+        /// <summary>One call builds both installers - used by the in-editor
+        /// runner flag so packaging can run without a second Unity instance.</summary>
+        [MenuItem("Project 8/Build All (Quest APK + Windows EXE)")]
+        public static void BuildAllPlatforms()
+        {
+            bool exe = BuildWindowsExe();
+            bool apk = BuildQuestApk();
+            Debug.Log($"[Project8] BuildAll: exe={exe} apk={apk}");
+            if (!exe || !apk)
+                throw new System.Exception("[Project8] BuildAll: one or more targets failed.");
         }
     }
 }
