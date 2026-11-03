@@ -645,8 +645,10 @@ namespace Project8.EditorTools
             var ship = BuildSpaceship(mats, hum);
             // Spawn already parked at the 90-degree vantage: south of the
             // binary-Earth line, facing +Z straight at it. No approach flight -
-            // the mission starts with the binary dead ahead.
-            ship.transform.position = new Vector3(-16f, 1.5f, 4f);
+            // the mission starts with the binary dead ahead. The seat rides
+            // ~8 m above the holes so the spacetime sheet and the wave ripples
+            // read as a landscape below instead of a wall ahead.
+            ship.transform.position = new Vector3(-16f, 4.5f, 4f);
             var rig = InstantiateXRRig();
             rig.transform.SetParent(ship.transform, false);
             rig.transform.localPosition = seatPos;

@@ -17,9 +17,10 @@ namespace Project8.UI
     }
 
     /// <summary>
-    /// Canvas labels render on the +Z-facing side (unlike TextMesh). Keep a
-    /// world-space label oriented toward the camera so its text is not mirrored
-    /// or hidden when the viewer moves around the optical bench.
+    /// A world-space Canvas renders its text on the local -Z side (a default
+    /// canvas is read from in FRONT of its negative forward axis), so - like
+    /// the TextMesh billboard above - +Z must point AWAY from the camera.
+    /// Aiming +Z at the viewer is what produced mirrored text.
     /// </summary>
     public class CanvasBillboard : MonoBehaviour
     {
@@ -29,9 +30,9 @@ namespace Project8.UI
         {
             var cam = targetCamera != null ? targetCamera : Camera.main;
             if (cam == null) return;
-            Vector3 toCamera = cam.transform.position - transform.position;
-            if (toCamera.sqrMagnitude > 0.001f)
-                transform.rotation = Quaternion.LookRotation(toCamera.normalized, Vector3.up);
+            Vector3 away = transform.position - cam.transform.position;
+            if (away.sqrMagnitude > 0.001f)
+                transform.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
         }
     }
 }

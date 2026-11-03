@@ -470,17 +470,17 @@ namespace Project8.Story
             // Labels hover a fixed WORLD height above their (now larger) parts;
             // the focus list keeps the raw component position for the camera.
             _laserLabel = AddPartLabel(_laserPos + Vector3.up * 0.26f, _laserPos,
-                Localize("LASER 激光器", "激光器 LASER", "LASER"));
+                Localize("LASER", "激光器", "LASER"));
             _splitterLabel = AddPartLabel(_splitterPos + Vector3.up * 0.30f, _splitterPos,
-                Localize("BEAM SPLITTER 分光镜", "分光镜", "STRAALDELER"));
+                Localize("BEAM SPLITTER", "分光镜", "STRAALDELER"));
             _armLabel = AddPartLabel(_armMidPos + Vector3.up * 0.24f, _armMidPos,
                 Localize("ET ARMS · 60°", "ET 干涉臂 · 60°", "ET-ARMEN · 60°"));
             _mirrorALabel = AddPartLabel(_mirrorAPos + Vector3.up * 0.30f, _mirrorAPos,
-                Localize("MIRROR 反射镜", "反射镜", "SPIEGEL"));
+                Localize("MIRROR", "反射镜", "SPIEGEL"));
             _mirrorBLabel = AddPartLabel(_mirrorBPos + Vector3.up * 0.30f, _mirrorBPos,
-                Localize("MIRROR 反射镜", "反射镜", "SPIEGEL"));
+                Localize("MIRROR", "反射镜", "SPIEGEL"));
             _detectorLabel = AddPartLabel(_detectorPos + Vector3.up * 0.26f, _detectorPos,
-                Localize("DETECTOR 探测器", "探测器", "DETECTOR"));
+                Localize("DETECTOR", "探测器", "DETECTOR"));
 
             var etLabel = MakeLabel(_etPos + Vector3.up * 0.9f,
                 Localize("EINSTEIN TELESCOPE · ET",
