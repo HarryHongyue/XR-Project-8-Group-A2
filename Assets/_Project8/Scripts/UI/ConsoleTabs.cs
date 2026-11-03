@@ -15,11 +15,8 @@ namespace Project8.UI
         public Button waveButton;
         public Button etButton;
 
-        static readonly Color ActiveTint = Color.white;
-        static readonly Color IdleTint = new Color(.72f, .78f, .9f, .6f);
-        // White face + white label was invisible - the active tab flips its
-        // label to deep blue, matching ButtonLabelHover's hover inversion.
-        static readonly Color LabelHot = new Color(0.02f, 0.25f, 0.45f);
+        static readonly Color ActiveTint = new Color(0.15f, 0.36f, 0.52f, 0.96f);
+        static readonly Color IdleTint = new Color(0.08f, 0.13f, 0.21f, 0.82f);
 
         Text _waveLabel, _etLabel;
 
@@ -41,8 +38,8 @@ namespace Project8.UI
                 waveButton.targetGraphic.color = wave ? ActiveTint : IdleTint;
             if (etButton != null && etButton.targetGraphic != null)
                 etButton.targetGraphic.color = wave ? IdleTint : ActiveTint;
-            if (_waveLabel != null) _waveLabel.color = wave ? LabelHot : Color.white;
-            if (_etLabel != null) _etLabel.color = wave ? Color.white : LabelHot;
+            if (_waveLabel != null) _waveLabel.color = Color.white;
+            if (_etLabel != null) _etLabel.color = Color.white;
         }
     }
 }

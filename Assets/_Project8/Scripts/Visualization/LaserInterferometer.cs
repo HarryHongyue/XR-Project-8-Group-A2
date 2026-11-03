@@ -49,6 +49,11 @@ namespace Project8.Visualization
         public Transform mirrorB;   // end mirror of arm B (local +Y)
         public Transform markerA;   // light marker riding arm A, out and back
         public Transform markerB;   // light marker riding arm B
+        [Tooltip("Optional extra light packets riding arm A, evenly staggered around " +
+                 "the round trip - a visible stream instead of one bouncing dot.")]
+        public Transform[] pulseTrainA;
+        [Tooltip("Optional extra light packets riding arm B.")]
+        public Transform[] pulseTrainB;
         public Renderer photodetector;
         public TextMesh readout;
 
@@ -117,8 +122,10 @@ namespace Project8.Visualization
             SetBeam(outboundB, offB, endB + offB);
             SetBeam(inboundB, endB - offB, -offB);
 
-            MoveMarker(markerA, axA, lenA, simTime);
-            MoveMarker(markerB, axB, lenB, simTime);
+            MoveMarker(markerA, axA, lenA, simTime, 0f);
+            MoveMarker(markerB, axB, lenB, simTime, 0f);
+            MovePulses(pulseTrainA, axA, lenA, simTime);
+            MovePulses(pulseTrainB, axB, lenB, simTime);
 
             // Pedagogical interference phase from the round-trip difference.
             float phase = 2f * Mathf.PI * (2f * lenA - 2f * lenB) / displayWavelength;
@@ -158,14 +165,25 @@ namespace Project8.Visualization
             return s * s;
         }
 
+        /// <summary>Extra packets of the same stream, spread evenly around the
+        /// round trip so the arm always shows several dots in transit.</summary>
+        void MovePulses(Transform[] pulses, Vector3 axis, float len, float t)
+        {
+            if (pulses == null) return;
+            float trip = 2f * Mathf.Max(len, 0.01f);
+            for (int i = 0; i < pulses.Length; i++)
+                MoveMarker(pulses[i], axis, len, t, (i + 1) * trip / (pulses.Length + 1));
+        }
+
         /// <summary>Visible light packet crawling out and back along an arm,
-        /// driven purely by simulation time so pause/reset stay deterministic.</summary>
-        void MoveMarker(Transform marker, Vector3 axis, float len, float t)
+        /// driven purely by simulation time so pause/reset stay deterministic.
+        /// `tripOffset` (distance units along the round trip) staggers pulses.</summary>
+        void MoveMarker(Transform marker, Vector3 axis, float len, float t, float tripOffset)
         {
             if (marker == null) return;
             float arm = Mathf.Max(len, 0.01f);
             float trip = 2f * arm;
-            float d = Mathf.Repeat(t * markerSpeed, trip);
+            float d = Mathf.Repeat(t * markerSpeed + tripOffset, trip);
             marker.localPosition = axis * (d <= arm ? d : trip - d);
         }
 

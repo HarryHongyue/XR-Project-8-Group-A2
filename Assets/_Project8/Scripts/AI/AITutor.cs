@@ -144,6 +144,8 @@ namespace Project8.AI
         public void Ask(string question)
         {
             Evaluation.ResearchLogger.Instance?.LogEvent("TutorQuestion", question ?? "");
+            // Every question route (typed input AND voice) funnels here - log it.
+            Project8.UI.MissionLogUI.Add("You", question);
             if (_backend == _local)
             {
                 _local.Ask(question, Emit);

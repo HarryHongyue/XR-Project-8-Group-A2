@@ -34,6 +34,32 @@ namespace Project8.AI
 
         void Start()
         {
+            // Repair older saved Main scenes that still have the avatar canvas
+            // centred on the cockpit; the current builder puts Rick at lower-right.
+            if (transform.parent != null &&
+                transform.parent.GetComponent<Project8.Interaction.CockpitControls>() != null)
+            {
+                // Far-right parking spot, far enough that the control panel
+                // (right edge near ship-local x 0.68) can never cover the
+                // avatar, the composer below it or the history board above.
+                transform.localPosition = new Vector3(1.15f, 1.02f, 1.20f);
+                var canvasRect = transform as RectTransform;
+                if (canvasRect != null)
+                    canvasRect.anchoredPosition = new Vector2(1.15f, 1.02f);
+            }
+            Camera faceCamera = Camera.main;
+            if (faceCamera == null && transform.parent != null)
+            {
+                var cockpit = transform.parent.GetComponent<Project8.Interaction.CockpitControls>();
+                if (cockpit != null) faceCamera = cockpit.seatedCamera;
+            }
+            if (faceCamera != null)
+            {
+                Vector3 awayFromEye = transform.position - faceCamera.transform.position;
+                if (awayFromEye.sqrMagnitude > 0.001f)
+                    transform.rotation = Quaternion.LookRotation(awayFromEye.normalized, Vector3.up);
+            }
+            EnsureRickFace();
             if (questionInput != null)
             {
                 if (ExperienceSettings.IsChinese)
@@ -46,12 +72,72 @@ namespace Project8.AI
                 else if (ExperienceSettings.IsDutch && questionInput.placeholder is Text phd)
                     phd.text = "Stel Rick een vraag...";
             }
-            if (chatWindow != null) chatWindow.SetActive(false);
+            if (chatWindow == null)
+            {
+                var child = transform.Find("ChatWindow");
+                if (child != null) chatWindow = child.gameObject;
+            }
+            if (chatWindow != null)
+            {
+                var rect = chatWindow.GetComponent<RectTransform>();
+                if (rect != null) rect.anchoredPosition = new Vector2(-280f, -170f);
+                chatWindow.SetActive(false);
+            }
             bool speechOk = Application.platform == RuntimePlatform.WindowsEditor ||
                             Application.platform == RuntimePlatform.WindowsPlayer;
             if (micButton != null && !speechOk && voiceInput == null)
                 micButton.interactable = false;
             UpdateMicVisual();
+        }
+
+        void EnsureRickFace()
+        {
+            Transform avatar = transform.Find("Avatar");
+            if (avatar == null) return;
+
+            Transform face = avatar.Find("Face");
+            if (face == null)
+            {
+                var go = new GameObject("Face", typeof(RectTransform), typeof(Image));
+                face = go.transform;
+                face.SetParent(avatar, false);
+                var rect = (RectTransform)face;
+                rect.anchorMin = Vector2.zero;
+                rect.anchorMax = Vector2.one;
+                rect.offsetMin = new Vector2(6f, 16f);
+                rect.offsetMax = new Vector2(-6f, -4f);
+            }
+
+            // Older Main scenes saved "RICK" as a Text Graphic on Face. Two
+            // Graphics on one CanvasRenderer fight each other, so retire that
+            // legacy Text and put the portrait in its own child Image.
+            var legacyText = face.GetComponent<Text>();
+            Transform portrait = face;
+            var image = face.GetComponent<Image>();
+            if (legacyText != null)
+            {
+                legacyText.text = "";
+                legacyText.enabled = false;
+                legacyText.raycastTarget = false;
+                if (image == null)
+                {
+                    var portraitGo = new GameObject("Portrait",
+                        typeof(RectTransform), typeof(Image));
+                    portrait = portraitGo.transform;
+                    portrait.SetParent(face, false);
+                    var portraitRect = (RectTransform)portrait;
+                    portraitRect.anchorMin = Vector2.zero;
+                    portraitRect.anchorMax = Vector2.one;
+                    portraitRect.offsetMin = new Vector2(4f, 4f);
+                    portraitRect.offsetMax = new Vector2(-4f, -4f);
+                    image = portraitGo.GetComponent<Image>();
+                }
+            }
+            if (image == null) image = portrait.gameObject.AddComponent<Image>();
+            image.enabled = true;
+            image.raycastTarget = false;
+            if (portrait.GetComponent<RickFaceIcon>() == null)
+                portrait.gameObject.AddComponent<RickFaceIcon>();
         }
 
         /// <summary>Avatar click: open or close the chat window.</summary>
@@ -166,11 +252,11 @@ namespace Project8.AI
             if (tutor == null || questionInput == null) return;
             string q = questionInput.text;
             if (string.IsNullOrWhiteSpace(q)) return;
-            tutor.Ask(q);
-            questionInput.text = "";
             SetAnswer(ExperienceSettings.IsChinese ? "Rick：思考中……"
                 : ExperienceSettings.IsDutch ? "Rick: aan het denken..."
                 : "Rick: thinking...");
+            tutor.Ask(q);
+            questionInput.text = "";
         }
 
         public void ShowAnswer(string answer)

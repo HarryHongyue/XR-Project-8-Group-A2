@@ -44,20 +44,53 @@ namespace Project8.UI
         {
             Clear();
             if (string.IsNullOrEmpty(id)) return;
-            if (_byId.TryGetValue(id, out var t)) t.SetLit(true);
+            if (TryFind(id, out var t)) t.SetLit(true);
         }
 
         /// <summary>Light/darken every registered id starting with prefix
         /// (e.g. "station-" lights D1/D2/D3 together for a pick-one prompt).</summary>
         public static void SetGroup(string idPrefix, bool on)
         {
+            RefreshRegistry();
             foreach (var kv in _byId)
                 if (kv.Key.StartsWith(idPrefix)) kv.Value.SetLit(on);
         }
 
         public static void Clear()
         {
-            foreach (var t in _byId.Values) t.SetLit(false);
+            RefreshRegistry();
+            foreach (var t in _byId.Values)
+                if (t != null) t.SetLit(false);
+        }
+
+        static bool TryFind(string targetId, out UiSpotlightTarget target)
+        {
+            if (_byId.TryGetValue(targetId, out target) && target != null)
+                return true;
+
+            // Some scene builders assign `id` immediately after AddComponent;
+            // OnEnable has already run by then. Repair the registry lazily so
+            // those cues still work in both generated and older serialized scenes.
+            RefreshRegistry();
+            return _byId.TryGetValue(targetId, out target) && target != null;
+        }
+
+        static void RefreshRegistry()
+        {
+            var stale = new List<string>();
+            foreach (var kv in _byId)
+                if (kv.Value == null || !kv.Value.gameObject.activeInHierarchy)
+                    stale.Add(kv.Key);
+            foreach (var key in stale) _byId.Remove(key);
+
+            var all = Resources.FindObjectsOfTypeAll<UiSpotlightTarget>();
+            foreach (var t in all)
+            {
+                if (t == null || !t.gameObject.scene.IsValid() ||
+                    !t.gameObject.activeInHierarchy || string.IsNullOrEmpty(t.id))
+                    continue;
+                _byId[t.id] = t;
+            }
         }
 
         void SetLit(bool on)
@@ -76,11 +109,11 @@ namespace Project8.UI
             rt.SetParent(host, false);
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
-            rt.offsetMin = new Vector2(-9f, -9f);   // ring sits a few px outside the face
-            rt.offsetMax = new Vector2(9f, 9f);
+            rt.offsetMin = new Vector2(-4f, -4f);
+            rt.offsetMax = new Vector2(4f, 4f);
             rt.SetAsLastSibling();
             _ring = go.GetComponent<Image>();
-            _ring.sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+            _ring.sprite = RuntimeUiSprites.ThinOutline;
             _ring.type = Image.Type.Sliced;
             _ring.fillCenter = false;               // border only -> glowing outline
             _ring.color = Glow;

@@ -11,14 +11,16 @@ namespace Project8.UI
     /// Image, no buttons, no GraphicRaycaster - just a white two-line Text with
     /// a black shadow, always visible at the lower centre of the canopy.
     ///
-    /// Long messages are paginated (max 2 lines per page) using language-aware
-    /// boundaries - CJK text splits on characters, Latin text on words. Pages
-    /// advance on UNSCALED time so narration stays readable while the
-    /// simulation is paused.
+    /// Long messages are paginated by COMPLETE SENTENCES: English, Chinese and
+    /// Dutch text splits on its own sentence terminators first, so every page
+    /// is a whole spoken unit and TTS never reads half a sentence. Only an
+    /// overlong single sentence falls back to clause/word packing (still max
+    /// 2 rendered lines, no character ever dropped). Pages advance on UNSCALED
+    /// time so narration stays readable while the simulation is paused.
     ///
-    /// Semantics: a new ShowNarration replaces any pending story pages; a
-    /// ShowAnswer temporarily interrupts the story queue and the latest story
-    /// position resumes once the answer finishes.
+    /// Narrations and AI answers are serialized: a new line never replaces
+    /// speech already on air. On Android, RickVoice polls the platform TTS
+    /// status so subtitle pages wait for the spoken utterance too.
     /// </summary>
     public class RickSubtitles : MonoBehaviour
     {
@@ -40,6 +42,8 @@ namespace Project8.UI
         int _storyIndex;
         readonly List<string> _answer = new List<string>();
         int _answerIndex;
+        readonly Queue<string> _pendingStory = new Queue<string>();
+        readonly Queue<QueuedAnswer> _pendingAnswers = new Queue<QueuedAnswer>();
         bool _showingAnswer;
         /// <summary>Answers displayed with no voiceText (the "thinking"
         /// placeholder, system hints) render silently - only pages carrying a
@@ -49,25 +53,49 @@ namespace Project8.UI
         Font _baseFont;
         bool _cjk;
 
-        /// <summary>Story narration event: replaces any PENDING story pages but
-        /// never cuts off an AI answer that is currently being read - the latest
-        /// story page simply resumes once the answer finishes.</summary>
+        struct QueuedAnswer
+        {
+            public string display;
+            public string voiceText;
+
+            public QueuedAnswer(string display, string voiceText)
+            {
+                this.display = display;
+                this.voiceText = voiceText;
+            }
+        }
+
+        /// <summary>Queue a story line behind any narration or AI answer already
+        /// being shown/spoken. A later story event can never cut the current clip.</summary>
         public void ShowNarration(string narration)
         {
+            if (string.IsNullOrWhiteSpace(narration)) return;
             _cjk = ExperienceSettings.IsChinese;
             ApplyFont();
             MissionLogUI.Add("Rick", narration);
+            if (HasActiveUtterance() || _pendingStory.Count > 0 ||
+                _pendingAnswers.Count > 0)
+            {
+                _pendingStory.Enqueue(narration);
+                return;
+            }
+            BeginNarration(narration);
+        }
+
+        void BeginNarration(string narration)
+        {
+            _cjk = ExperienceSettings.IsChinese;
+            ApplyFont();
+            _showingAnswer = false;
+            _answer.Clear();
+            _answerIndex = 0;
             PaginateInto(narration, _story);
             _storyIndex = 0;
-            // Per-page speech keeps voice and text in lock-step: each page is
-            // spoken the moment it appears, and the next page waits until the
-            // clip finishes - no more text racing ahead of the audio.
-            if (!_showingAnswer) _pageStart = -1f; // keep the answer's own clock
+            _pageStart = -1f;
             RenderCurrent();
         }
 
-        /// <summary>AI answer: temporarily interrupts the story queue. The
-        /// story resumes from its latest page once the answer has been read.
+        /// <summary>Queue an AI answer without interrupting an active utterance.
         /// Chooses the CJK font itself - an answer may be the first text shown.
         /// `voiceText` is the utterance spoken once (null = silent, e.g. the
         /// "thinking" placeholder); it may differ from the displayed text so a
@@ -81,6 +109,19 @@ namespace Project8.UI
             if (display.IndexOf("thinking", System.StringComparison.OrdinalIgnoreCase) < 0 &&
                 !display.Contains("思考中") && !display.Contains("denken"))
                 MissionLogUI.Add("Rick", display);
+            if (HasActiveUtterance() || _pendingStory.Count > 0 ||
+                _pendingAnswers.Count > 0)
+            {
+                _pendingAnswers.Enqueue(new QueuedAnswer(display, voiceText));
+                return;
+            }
+            BeginAnswer(display, voiceText);
+        }
+
+        void BeginAnswer(string display, string voiceText)
+        {
+            _cjk = ExperienceSettings.IsChinese;
+            ApplyFont();
             PaginateInto(display, _answer);
             _answerIndex = 0;
             if (_answer.Count > 0) _showingAnswer = true;
@@ -103,18 +144,32 @@ namespace Project8.UI
         public void AdvancePageForTest() => AdvancePage();
 
         /// <summary>Pages remaining or currently showing (tests/status).</summary>
-        public int PendingStoryPages => _story.Count - _storyIndex;
+        public int PendingStoryPages => _story.Count - _storyIndex + _pendingStory.Count;
         public bool IsShowingAnswer => _showingAnswer;
         /// <summary>True while any narration/answer is still on screen - used to
         /// fire "after the explanation finishes" cues like button spotlights.</summary>
         public bool Busy =>
-            (_showingAnswer ? _answer.Count - _answerIndex : _story.Count - _storyIndex) > 0;
+            HasActiveUtterance() || _pendingStory.Count > 0 || _pendingAnswers.Count > 0;
+
+        bool HasActiveUtterance()
+        {
+            var pages = _showingAnswer ? _answer : _story;
+            int index = _showingAnswer ? _answerIndex : _storyIndex;
+            return index < pages.Count || (voice != null && voice.IsSpeaking);
+        }
 
         void Update()
         {
             var pages = _showingAnswer ? _answer : _story;
             int idx = _showingAnswer ? _answerIndex : _storyIndex;
-            if (idx >= pages.Count || _pageStart < 0f) return;
+            if (idx >= pages.Count)
+            {
+                if ((voice == null || !voice.IsSpeaking) &&
+                    (_pendingStory.Count > 0 || _pendingAnswers.Count > 0))
+                    RenderCurrent();
+                return;
+            }
+            if (_pageStart < 0f) return;
             // Hold the page while its line is still being spoken.
             if (voice != null && voice.IsSpeaking) return;
 
@@ -123,8 +178,7 @@ namespace Project8.UI
         }
 
         /// <summary>Single page-advance transition shared by Update() and the
-        /// test hook; resumes the story queue (and any narration voice held
-        /// back during an AI answer) when the answer finishes.</summary>
+        /// test hook. Queued utterances start only after the current clip ends.</summary>
         void AdvancePage()
         {
             if (_showingAnswer) _answerIndex++; else _storyIndex++;
@@ -141,24 +195,34 @@ namespace Project8.UI
             {
                 if (_pageStart < 0f) _pageStart = Time.unscaledTime;
                 text.text = pages[idx];
-                // Speak exactly the text on screen - Speak() strips the
-                // "Rick: " prefix itself, and a newer page cancels the old clip.
-                // Silent pages (thinking placeholder, hints) render only.
+                // Speak the visible page; Update waits for this clip before
+                // advancing, so the next subtitle cannot overtake the audio.
                 if (voice != null && (!_showingAnswer || _answerHasVoice))
                     voice.Speak(pages[idx]);
                 return;
             }
             if (_showingAnswer)
             {
-                // Answer finished -> hand back to the latest story position.
                 _showingAnswer = false;
-                _pageStart = -1f;
-                RenderCurrent();
+            }
+
+            _answer.Clear();
+            _answerIndex = 0;
+            _answerHasVoice = false;
+            _pageStart = -1f;
+            if (_pendingAnswers.Count > 0)
+            {
+                var next = _pendingAnswers.Dequeue();
+                BeginAnswer(next.display, next.voiceText);
                 return;
             }
-            // Story queue exhausted: keep the last page up a beat, then clear.
+            if (_pendingStory.Count > 0)
+            {
+                BeginNarration(_pendingStory.Dequeue());
+                return;
+            }
+
             text.text = "";
-            _pageStart = -1f;
         }
 
         // ---------------------------------------------------------- pagination
@@ -175,12 +239,15 @@ namespace Project8.UI
                 FallbackPaginate(raw, pages); // no font wired (should not happen)
         }
 
-        /// <summary>Measured pagination: every returned page renders in at most
-        /// MaxLinesPerPage lines inside `width` pixels at the given font - the
-        /// real TextGenerator does the measuring, so Latin words, CJK strings,
-        /// explicit newlines and unbroken overlong tokens are all handled with
-        /// no character ever dropped. Static and side-effect free so editor
-        /// regression can exercise it without a Canvas.</summary>
+        /// <summary>Measured, sentence-aware pagination. Each complete sentence -
+        /// English/Dutch ending in '.', '!' or '?', Chinese in '。！？；' -
+        /// becomes its own page whenever it fits inside MaxLinesPerPage lines,
+        /// so the voice never reads half a sentence on one page and the rest on
+        /// the next. A single sentence too long for one page is split at clause
+        /// boundaries (commas, semicolons, pauses) first and only then falls
+        /// back to the greedy word/character packing - every character is kept.
+        /// Static and side-effect free so editor regression can exercise it
+        /// without a Canvas.</summary>
         public static List<string> PaginateForDisplay(string raw, float width,
             Font font, int fontSize = 28)
         {
@@ -207,50 +274,172 @@ namespace Project8.UI
                 return gen.lineCount <= MaxLinesPerPage;
             }
 
+            var spill = new StringBuilder();
+            void Flush()
+            {
+                if (spill.Length == 0) return;
+                string t = spill.ToString().Trim();
+                if (t.Length > 0) pages.Add(t);
+                spill.Clear();
+            }
+
             foreach (string paragraph in raw.Replace("\r", "").Split('\n'))
             {
-                // Tokenize: Latin splits on words (joined with spaces); CJK and
-                // overlong words fall back to characters (joined seamlessly).
-                var units = new List<KeyValuePair<string, bool>>(); // text, spaceBefore
-                if (IsMostlyCjk(paragraph))
-                    foreach (char c in paragraph.Trim())
-                    {
-                        if (!char.IsWhiteSpace(c))
-                            units.Add(new KeyValuePair<string, bool>(c.ToString(), false));
-                    }
-                else
-                    foreach (string w in paragraph.Trim().Split(' '))
-                        if (w.Length > 0)
-                            units.Add(new KeyValuePair<string, bool>(w, true));
-
-                var page = new StringBuilder();
-                foreach (var u in units)
+                foreach (string sentence in SplitSentences(paragraph))
                 {
-                    string candidate = page.Length == 0 ? u.Key
-                        : page + (u.Value ? " " : "") + u.Key;
-                    if (Fits(candidate)) { page.Clear(); page.Append(candidate); continue; }
-                    if (page.Length > 0)
+                    if (Fits(sentence))
                     {
-                        pages.Add(page.ToString());
-                        page.Clear();
-                        if (Fits(u.Key)) { page.Append(u.Key); continue; }
+                        // One complete sentence per page - the speech unit.
+                        Flush();
+                        pages.Add(sentence);
+                        continue;
                     }
-                    // A single unit wider than the box: break it character by
-                    // character - nothing is ever truncated away.
-                    foreach (char c in u.Key)
+                    // Overlong sentence: break at clause boundaries before
+                    // ever touching word/character packing.
+                    foreach (string clause in SplitClauses(sentence))
                     {
-                        if (Fits(page.ToString() + c)) page.Append(c);
-                        else
+                        string candidate = spill.Length == 0 ? clause
+                            : spill + " " + clause;
+                        if (Fits(candidate))
                         {
-                            if (page.Length > 0) pages.Add(page.ToString());
-                            page.Clear();
-                            page.Append(c);
+                            spill.Clear();
+                            spill.Append(candidate);
+                            continue;
                         }
+                        Flush();
+                        if (Fits(clause)) { spill.Append(clause); continue; }
+                        PackUnits(clause, Fits, spill, pages);
                     }
                 }
-                if (page.Length > 0) pages.Add(page.ToString());
             }
+            Flush();
             return pages;
+        }
+
+        /// <summary>Greedy word/character packing of ONE text (never wider than
+        /// the box allows) into `page`, emitting full pages into `pages`.
+        /// Latin splits on words, CJK on characters; a token wider than the box
+        /// is broken character by character - nothing is truncated.</summary>
+        static void PackUnits(string text, System.Func<string, bool> fits,
+            StringBuilder page, List<string> pages)
+        {
+            var units = new List<KeyValuePair<string, bool>>(); // text, spaceBefore
+            if (IsMostlyCjk(text))
+                foreach (char c in text.Trim())
+                {
+                    if (!char.IsWhiteSpace(c))
+                        units.Add(new KeyValuePair<string, bool>(c.ToString(), false));
+                }
+            else
+                foreach (string w in text.Trim().Split(' '))
+                    if (w.Length > 0)
+                        units.Add(new KeyValuePair<string, bool>(w, true));
+
+            foreach (var u in units)
+            {
+                string candidate = page.Length == 0 ? u.Key
+                    : page + (u.Value ? " " : "") + u.Key;
+                if (fits(candidate)) { page.Clear(); page.Append(candidate); continue; }
+                if (page.Length > 0)
+                {
+                    pages.Add(page.ToString().Trim());
+                    page.Clear();
+                    if (fits(u.Key)) { page.Append(u.Key); continue; }
+                }
+                foreach (char c in u.Key)
+                {
+                    if (fits(page.ToString() + c)) page.Append(c);
+                    else
+                    {
+                        if (page.Length > 0) pages.Add(page.ToString().Trim());
+                        page.Clear();
+                        page.Append(c);
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------ sentence split
+        /// <summary>Punctuation that ALWAYS ends a sentence, in every supported
+        /// language (Latin '!', '?', ';' and the CJK/full-width variants).</summary>
+        static bool IsHardEnd(char c)
+        {
+            return c == '!' || c == '?' || c == ';' ||
+                   c == '！' || c == '？' || c == '；' || c == '…' ||
+                   c == '。';
+        }
+
+        /// <summary>Closing marks that belong to the sentence they follow.</summary>
+        static bool IsCloser(char c)
+        {
+            return c == '"' || c == '“' || c == '”' || c == '’' || c == '\'' ||
+                   c == ')' || c == '）' || c == '」' || c == '』' ||
+                   c == '》' || c == '»';
+        }
+
+        /// <summary>True when `c` at index `i` in `s` terminates a sentence.
+        /// A period counts only when followed by whitespace, a closing mark or
+        /// the end of the string - decimals like "0.5" never split.</summary>
+        static bool IsSentenceEnd(string s, int i)
+        {
+            char c = s[i];
+            if (IsHardEnd(c) || c == '.')
+            {
+                if (c != '.') return true;
+                if (i + 1 >= s.Length) return true;
+                char n = s[i + 1];
+                return char.IsWhiteSpace(n) || IsCloser(n);
+            }
+            return false;
+        }
+
+        /// <summary>Splits a paragraph into complete trimmed sentences, keeping
+        /// each terminator (and any following closing quotes) attached to its
+        /// own sentence. A trailing fragment without punctuation is a sentence
+        /// too, so no character is ever lost.</summary>
+        static List<string> SplitSentences(string paragraph)
+        {
+            var result = new List<string>();
+            var sb = new StringBuilder();
+            for (int i = 0; i < paragraph.Length; i++)
+            {
+                sb.Append(paragraph[i]);
+                if (!IsSentenceEnd(paragraph, i)) continue;
+                // Chained terminators ("?!") and closing quotes belong here.
+                while (i + 1 < paragraph.Length &&
+                       (IsHardEnd(paragraph[i + 1]) || IsCloser(paragraph[i + 1])))
+                    sb.Append(paragraph[++i]);
+                string sentence = sb.ToString().Trim();
+                sb.Clear();
+                if (sentence.Length > 0) result.Add(sentence);
+            }
+            string tail = sb.ToString().Trim();
+            if (tail.Length > 0) result.Add(tail);
+            return result;
+        }
+
+        /// <summary>Splits an overlong sentence at clause boundaries - commas,
+        /// CJK pauses and dashes - keeping the mark attached to its clause.
+        /// Colons are NOT boundaries so the "Rick:" speaker tag stays put.</summary>
+        static List<string> SplitClauses(string sentence)
+        {
+            var result = new List<string>();
+            var sb = new StringBuilder();
+            for (int i = 0; i < sentence.Length; i++)
+            {
+                char c = sentence[i];
+                sb.Append(c);
+                bool clauseEnd = c == ',' || c == '，' || c == '、' ||
+                                 c == '，' || c == '—' || c == '–';
+                if (!clauseEnd) continue;
+                string clause = sb.ToString().Trim();
+                sb.Clear();
+                if (clause.Length > 0) result.Add(clause);
+            }
+            string tail = sb.ToString().Trim();
+            if (tail.Length > 0) result.Add(tail);
+            if (result.Count == 0) result.Add(sentence.Trim());
+            return result;
         }
 
         static bool IsMostlyCjk(string s)
@@ -266,13 +455,25 @@ namespace Project8.UI
             return total > 0 && cjk * 2 >= total;
         }
 
-        /// <summary>Char-budget fallback used only when no font is wired yet.</summary>
+        /// <summary>Char-budget fallback used only when no font is wired yet:
+        /// still splits by complete sentences first, then by budget.</summary>
         static void FallbackPaginate(string raw, List<string> pages)
         {
             int budget = IsMostlyCjk(raw) ? MaxCjkCharsPerPage : MaxLatinCharsPerPage;
-            string s = raw.Trim();
-            for (int i = 0; i < s.Length; i += budget)
-                pages.Add(s.Substring(i, Mathf.Min(budget, s.Length - i)));
+            foreach (string paragraph in raw.Replace("\r", "").Split('\n'))
+            {
+                foreach (string sentence in SplitSentences(paragraph))
+                {
+                    if (sentence.Length <= budget)
+                    {
+                        pages.Add(sentence);
+                        continue;
+                    }
+                    for (int i = 0; i < sentence.Length; i += budget)
+                        pages.Add(sentence.Substring(i,
+                            Mathf.Min(budget, sentence.Length - i)));
+                }
+            }
         }
     }
 }

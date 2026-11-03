@@ -53,6 +53,8 @@ namespace Project8.Visualization
         float _nextRefresh;
         static readonly Color LaneDim = new Color(0.38f, 0.40f, 0.48f, 0.45f);
         static readonly Color LaneLit = Color.white;
+        static readonly Color StationSelected = new Color(0.15f, 0.36f, 0.52f, 0.96f);
+        static readonly Color StationIdle = new Color(0.08f, 0.13f, 0.21f, 0.82f);
 
         void Start() => ApplyVisibility();
 
@@ -95,20 +97,25 @@ namespace Project8.Visualization
                     Tint(d.outboundB, c); Tint(d.inboundB, c);
                 }
             }
-            // Selector button feedback: the chosen station is lit, others dim.
-            // The lit face is near-white so the label flips dark, matching the
-            // tab inversion everywhere else.
+            // Selected station gets a distinct deep-teal face; white labels
+            // remain high-contrast in selected and idle states.
             if (stationButtons != null)
                 for (int i = 0; i < stationButtons.Length; i++)
                 {
                     if (stationButtons[i] == null) continue;
                     if (stationButtons[i].targetGraphic != null)
                         stationButtons[i].targetGraphic.color =
-                            i == SelectedDetector ? LaneLit
-                                : new Color(.7f, .74f, .85f, .55f);
+                            i == SelectedDetector ? StationSelected : StationIdle;
                     var hover = stationButtons[i]
                         .GetComponent<Project8.UI.ButtonLabelHover>();
-                    if (hover != null) hover.SetHot(i == SelectedDetector);
+                    if (hover != null)
+                    {
+                        hover.labelNormal = Color.white;
+                        hover.labelHot = Color.white;
+                        hover.SetHot(false);
+                    }
+                    var label = stationButtons[i].GetComponentInChildren<Text>(true);
+                    if (label != null) label.color = Color.white;
                 }
             if (statusText != null)
             {

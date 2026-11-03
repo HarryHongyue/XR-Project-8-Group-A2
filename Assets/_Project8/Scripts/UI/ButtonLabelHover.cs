@@ -5,10 +5,9 @@ using UnityEngine.UI;
 namespace Project8.UI
 {
     /// <summary>
-    /// The half of button feedback Unity's ColorTint transition cannot express:
-    /// it can only tint the background, never the label. On hover/press/select
-    /// this flips the label to deep cockpit blue while the Button's own tint
-    /// brightens the glass face toward white - readable in BOTH directions.
+    /// Keeps labels white across pointer and keyboard states. The glass face
+    /// carries the subtle hover/press change; flipping the label to dark blue
+    /// made it disappear on the dim blue background.
     /// </summary>
     [RequireComponent(typeof(Button))]
     public class ButtonLabelHover : MonoBehaviour,
@@ -18,7 +17,7 @@ namespace Project8.UI
     {
         public Text label;
         public Color labelNormal = Color.white;
-        public Color labelHot = new Color(0.02f, 0.25f, 0.45f); // deep cockpit blue
+        public Color labelHot = Color.white;
 
         bool _hot;
 
@@ -31,14 +30,13 @@ namespace Project8.UI
         void OnDisable() { _hot = false; Apply(); }
         void OnEnable() { Apply(); }
 
-        /// <summary>External "selected" state (toggle-like buttons such as the
-        /// D1/D2/D3 station pickers): keeps the label dark on the lit face
-        /// even after the pointer leaves.</summary>
+        /// <summary>External "selected" state hook kept for toggle-like buttons;
+        /// only the face tint changes, the label remains white.</summary>
         public void SetHot(bool on) { _hot = on; Apply(); }
 
         void Apply()
         {
-            if (label != null) label.color = _hot ? labelHot : labelNormal;
+            if (label != null) label.color = Color.white;
         }
     }
 }

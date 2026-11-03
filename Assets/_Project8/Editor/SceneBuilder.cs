@@ -34,8 +34,6 @@ namespace Project8.EditorTools
         const string Root = "Assets/_Project8";
 
         static Font _font;
-        static Sprite _uiSprite;
-        static Sprite _knobSprite;
 
         // ---- liquid-glass UI palette -------------------------------------------
         static readonly Color Accent      = new Color(0.50f, 0.90f, 1f);
@@ -217,8 +215,6 @@ namespace Project8.EditorTools
         {
             _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (_font == null) _font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            _uiSprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-            _knobSprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
         }
 
         static void EnsureFolders()
@@ -701,8 +697,8 @@ namespace Project8.EditorTools
 
             // --- the Einstein Telescope observatory -------------------------------
             // Horizontal equilateral triangle of three 60-degree stations, each
-            // hosting a nested LF/HF lane pair (2020 design baseline). It sits
-            // beyond Earth on the wave line - the mission's final stop.
+            // hosting a nested LF/HF lane pair (2020 design baseline). The
+            // runtime lab relocates this single model underground for the tour.
             // Panels face the eye in WORLD space - the ship no longer sits at the origin.
             Vector3 eyeWorld = ship.transform.TransformPoint(eye);
             var et = BuildEinsteinTelescope(mats, model, controller,
@@ -1665,10 +1661,11 @@ namespace Project8.EditorTools
             var btn = rt.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
             var colors = btn.colors;
-            // Hover pushes the glass toward opaque white; ButtonLabelHover flips
-            // the label to deep blue at the same moment - never white-on-white.
-            colors.highlightedColor = new Color(1.7f, 1.75f, 1.8f, 1f);
-            colors.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
+            // Subtle cool state changes preserve the smoked-glass contrast;
+            // labels stay white rather than flipping dark on a white face.
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.86f, 0.95f, 1f, 1f);
+            colors.pressedColor = new Color(0.68f, 0.88f, 1f, 1f);
             colors.disabledColor = new Color(0.55f, 0.55f, 0.62f, 0.5f);
             btn.colors = colors;
             if (onClick != null) UnityEventTools.AddPersistentListener(btn.onClick, onClick);
@@ -1751,18 +1748,18 @@ namespace Project8.EditorTools
             Stretch(fillArea);
             var fill = NewUIObject("Fill", fillArea);
             Stretch(fill);
-            var fillImg = fill.gameObject.AddComponent<Image>();
-            fillImg.sprite = _uiSprite;
-            fillImg.type = Image.Type.Sliced;
+            var fillImg = fill.gameObject.AddComponent<LiquidGlassGraphic>();
+            fillImg.material = GlassMat(GlassRole.Selected);
             fillImg.color = new Color(Accent.r, Accent.g, Accent.b, 0.9f);
+            fillImg.raycastTarget = false;
             slider.fillRect = fill;
 
             var handleArea = NewUIObject("Handle Slide Area", rt);
             Stretch(handleArea);
             var handle = NewUIObject("Handle", handleArea);
             handle.sizeDelta = new Vector2(34f, 40f);
-            var handleImg = handle.gameObject.AddComponent<Image>();
-            handleImg.sprite = _knobSprite != null ? _knobSprite : _uiSprite;
+            var handleImg = handle.gameObject.AddComponent<LiquidGlassGraphic>();
+            handleImg.material = GlassMat(GlassRole.Button);
             handleImg.color = Accent;
             slider.handleRect = handle;
             slider.targetGraphic = handleImg;

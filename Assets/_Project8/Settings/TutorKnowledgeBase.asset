@@ -38,7 +38,30 @@ MonoBehaviour:
     - detector
     - interferometer
     - ligo
-    answer: 'The triangular facility at the end of the mission is the Einstein Telescope model: three interferometers in an equilateral triangle, each station''s arms at 60 degrees, and each station nesting a low- and a high-frequency instrument - the real 2020 design baseline. Like LIGO''s Michelsons it splits laser light, sends it down two arms and recombines it at the splitter; a wave shifts each round trip differently so the dark ports read differently. Our model shows the principle only - no cavities, suspensions or noise curves.'
+    answer: 'The Einstein Telescope model sits in the underground lab you reach by diving into the Earth: three interferometers in an equilateral triangle, each station''s arms at 60 degrees, and each station nesting a low- and a high-frequency instrument - the real 2020 design baseline. The L-shaped demo on the bench shows how ONE such instrument works. Our model shows the principle only - no cavities, suspensions or noise curves.'
+  - keywords:
+    - laser
+    - beam
+    - light
+    - splitter
+    - mirror
+    answer: 'The laser makes light of one pure colour. The tilted glass plate - the beam splitter - sends half the light down each of the two arms. Mirrors at the ends send it back, and the returning beams overlap again at the splitter.'
+  - keywords:
+    - interference
+    - interfere
+    - dark port
+    - dark
+    - photodetector
+    - flicker
+    answer: 'Where the two beams overlap again they interfere. With equal arms every wave peak lands on a wave dip and cancels - the detector stays dark. A passing wave changes one arm differently from the other, the cancellation breaks and light flickers onto the photodetector. That flicker is the measurement.'
+  - keywords:
+    - underground
+    - lab
+    - laboratory
+    - cavern
+    - deep
+    - buried
+    answer: 'Real gravitational-wave detectors sit in the quietest places engineers can find - the Einstein Telescope is designed to go ~200 metres underground - because wind, traffic and tiny tremors would shake the mirrors and drown the signal. Our lab models that.'
   - keywords:
     - lf
     - hf

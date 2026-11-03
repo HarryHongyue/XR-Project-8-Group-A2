@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using Project8.Core;
 using Project8.Interaction;
 using Project8.UI;
+using Project8.Visualization;
 
 namespace Project8.Story
 {
@@ -74,6 +75,9 @@ namespace Project8.Story
         Phase _phase = Phase.Waiting;
         public bool CanPilot => _phase == Phase.Waiting || _phase == Phase.EarthPause ||
                                 _phase == Phase.InLab || _phase == Phase.Done;
+        public bool InLab => _phase == Phase.InLab || _phase == Phase.Done;
+        public Vector3 ClampLabPosition(Vector3 position) =>
+            lab != null ? lab.ClampPilotPosition(position) : position;
         /// <summary>Replay/Reset/Load are only offered at the stable observation
         /// phases - mid-transit they are disabled and the methods no-op, so a
         /// wave preview can never freeze the journey without an escape.</summary>
@@ -85,6 +89,8 @@ namespace Project8.Story
         /// automatic mission choreography (ride + slides) is suspended.</summary>
         public bool InPreview => _preview;
         bool _preview;
+        bool _canStartMission = true;
+        Coroutine _promptRoutine;
         Vector3 _initialShipPos;
         Quaternion _initialShipRot;
         bool _poseCaptured;
@@ -125,7 +131,9 @@ namespace Project8.Story
             lab = gameObject.AddComponent<LabExperience>();
             lab.Build(this);
 
+            _canStartMission = false;
             SetButtons(true, false, false);
+            if (startButton != null) startButton.interactable = false;
             StartCoroutine(Intro());
         }
 
@@ -134,39 +142,43 @@ namespace Project8.Story
         /// how to call Rick later - the avatar flashes while it is mentioned.</summary>
         System.Collections.IEnumerator Intro()
         {
-            Narrate("Rick: Hi - I'm Rick, your AI guide today. You're sitting in a " +
-                    "spaceship drifting near two black holes that are about to merge.",
-                    "Rick：你好，我是 Rick，今天的 AI 讲解助手。你现在正坐在一艘宇宙飞船里，" +
-                    "漂浮在两个即将相撞的黑洞附近。",
-                    "Rick: Hoi - ik ben Rick, je AI-gids vandaag. Je zit in een " +
-                    "ruimteschip vlak bij twee zwarte gaten die gaan samensmelten.");
+            Narrate("Rick: Hi, I'm Rick - your AI guide for today's lesson on gravity, " +
+                    "gravitational waves and how the Einstein Telescope detects them. " +
+                    "You're aboard our research ship, close to two black holes about to merge.",
+                    "Rick：你好，我是 Rick，今天的 AI 讲解助手。我们今天循序渐进地了解引力、" +
+                    "引力波，以及爱因斯坦望远镜如何探测它们。你现在在一艘科研飞船里，" +
+                    "就在两个即将合并的黑洞附近。",
+                    "Rick: Hoi, ik ben Rick - je AI-gids voor de les van vandaag over " +
+                    "zwaartekracht, zwaartekrachtgolven en hoe de Einstein Telescope ze meet. " +
+                    "Je zit in ons onderzoeksschip, vlak bij twee zwarte gaten die gaan samensmelten.");
             while (subtitles != null && subtitles.Busy) yield return null;
 
-            Narrate("Rick: What is gravity? Imagine a bedsheet - drop a ball on it and " +
-                    "the sheet dips, so smaller things roll toward it. Stars do the same " +
-                    "thing to space itself: that dip IS gravity. You can see it on the " +
-                    "sheet right below the black holes.",
-                    "Rick：什么是引力？想象一张床单——放个球上去，床单被压出一个坑，周围的" +
-                    "小东西就会往坑里滚。星球对时空做的事一模一样：压弯时空就是引力。" +
-                    "看黑洞脚下那张床单，就是这个效果。",
-                    "Rick: Wat is zwaartekracht? Denk aan een laken - leg er een bal op " +
-                    "en het zakt in, dus kleinere dingen rollen ernaartoe. Sterren doen " +
-                    "datzelfde met de ruimte zelf. Kijk naar het laken onder de zwarte gaten.");
+            Narrate("Rick: First: gravity. Imagine a stretched bedsheet with a heavy ball " +
+                    "in the middle. The sheet bends, and a marble rolls toward the dip. " +
+                    "That picture is only an analogy - space is not a cloth - but it helps " +
+                    "show how mass changes the shape of spacetime and guides the paths of " +
+                    "nearby objects. Look at the model beneath the black holes.",
+                    "Rick：先说引力。想象一张绷紧的床单，中间放一个很重的球，床单会弯下去，" +
+                    "小弹珠就会滚向凹陷处。这只是比喻——空间并不是真的床单——但它能帮助我们" +
+                    "理解：质量会改变时空的形状，附近物体的运动路径也会随之改变。看看黑洞下方的模型。",
+                    "Rick: Eerst: zwaartekracht. Denk aan een strak laken met een zware bal " +
+                    "in het midden. Het laken buigt en een knikker rolt naar de kuil. Het is " +
+                    "maar een vergelijking - ruimte is geen laken - maar zo zie je hoe massa " +
+                    "de ruimtetijd vervormt en de beweging van nabije voorwerpen beïnvloedt. " +
+                    "Kijk naar het model onder de zwarte gaten.");
             while (subtitles != null && subtitles.Busy) yield return null;
 
-            Narrate("Rick: When these two monsters spiral and collide, the sheet shakes " +
-                    "hard - those ripples racing outward are gravitational waves. And " +
-                    "whenever you want to ask me anything, tap the glowing RICK button " +
-                    "in your lower right.",
-                    "Rick：当这两个大家伙互绕相撞时，床单会剧烈抖动——向外扩散的波纹就是" +
-                    "引力波。想问我任何问题，随时点右下角的 RICK 按钮呼叫我。",
-                    "Rick: Als deze twee reuzen spiraliseren en botsen, schudt het laken - " +
-                    "die rimpelingen zijn zwaartekrachtgolven. Wil je me iets vragen? " +
-                    "Tik op de RICK-knop rechtsonder.");
-            UiSpotlightTarget.Show("rick-avatar");
-            float t0 = Time.unscaledTime;
-            while (Time.unscaledTime - t0 < 4f) yield return null;
-            UiSpotlightTarget.Clear();
+            Narrate("Rick: When heavy objects accelerate - like these two black holes " +
+                    "orbiting and colliding - they send tiny ripples through spacetime. " +
+                    "Those ripples are gravitational waves. You can call me any time by " +
+                    "tapping the RICK face at the lower right.",
+                    "Rick：当很重的天体加速运动时——比如这两个黑洞互相绕转并合并——它们会把" +
+                    "细微的涟漪传遍时空，这就是引力波。想随时问我问题，就点右下角 RICK 的头像。",
+                    "Rick: Als zware objecten versnellen - zoals deze zwarte gaten die om " +
+                    "elkaar draaien en botsen - sturen ze kleine rimpelingen door de " +
+                    "ruimtetijd. Dat zijn zwaartekrachtgolven. Je kunt me altijd iets " +
+                    "vragen door rechtsonder op Rick te tikken.");
+            yield return StartCoroutine(SpotlightAfterNarration("rick-avatar", 4f));
 
             Narrate("Rick: Ahead of us - seen side-on - the pair is about to crash. " +
                     "That collision sends ripples through space itself. Press " +
@@ -175,21 +187,42 @@ namespace Project8.Story
                     "准备好后点「开始任务」。",
                     "Rick: Recht voor ons - van opzij - gaan ze bijna botsen. Druk op " +
                     "MISSIE STARTEN als je klaar bent.");
-            StartCoroutine(SpotlightAfter("start", 0f));
+            yield return StartCoroutine(SpotlightAfterNarration("start", 0f,
+                () =>
+                {
+                    _canStartMission = true;
+                    if (startButton != null) startButton.interactable = true;
+                }));
         }
 
-        /// <summary>Light a control only AFTER the narration that mentions it has
-        /// fully played - not while Rick is still explaining. holdSeconds <= 0
-        /// keeps it lit until the next cue replaces it.</summary>
-        System.Collections.IEnumerator SpotlightAfter(string id, float holdSeconds)
+        /// <summary>Light a control only AFTER its narration has fully played.
+        /// Optionally run a callback when the user can safely interact.</summary>
+        internal Coroutine PromptAfterNarration(string id, float holdSeconds,
+            System.Action onReady = null)
+        {
+            if (!Application.isPlaying)
+            {
+                onReady?.Invoke();
+                return null;
+            }
+            if (_promptRoutine != null) StopCoroutine(_promptRoutine);
+            _promptRoutine = StartCoroutine(
+                SpotlightAfterNarration(id, holdSeconds, onReady));
+            return _promptRoutine;
+        }
+
+        System.Collections.IEnumerator SpotlightAfterNarration(string id, float holdSeconds,
+            System.Action onReady = null)
         {
             while (subtitles != null && subtitles.Busy) yield return null;
             UiSpotlightTarget.Show(id);
+            onReady?.Invoke();
             if (holdSeconds > 0f)
             {
-                yield return new WaitForSeconds(holdSeconds);
+                yield return new WaitForSecondsRealtime(holdSeconds);
                 UiSpotlightTarget.Clear();
             }
+            _promptRoutine = null;
         }
 
         float SOf(Vector3 p) => Vector3.Dot(p - model.Origin, model.PropagationDirection);
@@ -197,7 +230,7 @@ namespace Project8.Story
 
         public void Advance()
         {
-            if (_phase == Phase.Waiting) StartMission();
+            if (_phase == Phase.Waiting && _canStartMission) StartMission();
             else if (_phase == Phase.EarthPause) ContinueMission();
             else if (_phase == Phase.InLab && lab != null) lab.NextStep();
             else if (_phase == Phase.Done) RestartMission();
@@ -224,16 +257,20 @@ namespace Project8.Story
                     "naar elkaar spiraliseren tot ze botsen. We bewegen pas als de " +
                     "golf er is.");
             SetButtons(false, false, false);
-            StartCoroutine(SpotlightAfter("play", 8f));
+            // Do not pulse the persistent transport button unless the narration
+            // explicitly asks the user to press it.
         }
 
-        /// <summary>CONTINUE at the Earth stop: the ship dives toward the planet and
-        /// sinks into the crust - the underground lab takes over from there.</summary>
+        /// <summary>CONTINUE at the Earth stop: FIRST the wave freezes and Earth
+        /// snaps back to its rest shape (seek the clock past the wave's transit
+        /// at Earth so every strain reads ~0), THEN the ship dives. The whole
+        /// descent runs with the simulation paused - nothing wobbles while the
+        /// user sinks into the crust.</summary>
         public void ContinueMission()
         {
             if (_phase != Phase.EarthPause) return;
-            _preview = false;         // leave any wave preview and resume travel
-            simulation.Play();
+            _preview = false;
+            SettleWaveBeforeDive();
             _phase = Phase.Diving;
             Narrate("Rick: Hold on - we are diving into the Earth. Deep under our feet " +
                     "sits the lab where the Einstein Telescope detects the wave. " +
@@ -249,14 +286,52 @@ namespace Project8.Story
             else OnLabArrived(); // safety: never trap the mission without the lab
         }
 
+        /// <summary>Freeze the world for the descent. The clock is parked a few
+        /// seconds past the wave's transit at Earth so every strain reads ~0
+        /// (Earth deformer, spacetime sheet, wavefront visuals and the merged
+        /// black-hole pair all settle), then the Earth visuals are snapped back
+        /// to rest scale and switched off. The simulation stays paused for the
+        /// whole dive - a Resume/Pause press cannot thaw it mid-descent.</summary>
+        void SettleWaveBeforeDive()
+        {
+            float settle = 0f;
+            if (model != null)
+            {
+                float v = model.parameters != null
+                    ? Mathf.Max(model.parameters.visualizationSpeedMps, 1e-4f) : 1f;
+                // StrainAt is EXACTLY zero once tau >= 8*ringdown, so park past
+                // that threshold - Earth, the sheet and the wavefront all read
+                // a clean zero, not merely "small".
+                float tail = model.parameters != null
+                    ? Mathf.Max(8f * model.parameters.ringdownSeconds,
+                                model.parameters.packetDurationSeconds) + 1f
+                    : 30f;
+                settle = model.emissionDelay + tail;
+                if (earth != null)
+                    settle += model.PropagationDistance(earth.position) / v;
+            }
+            simulation.RestartAt(settle, false); // parked, reset listeners notified
+            if (earth == null) return;
+            foreach (var d in earth.GetComponentsInChildren<EarthDeformer>(true))
+                d.RestoreRest();
+        }
+
+        /// <summary>Opposite of <see cref="SettleWaveBeforeDive"/>: wake the Earth
+        /// visuals for a fresh run of the journey.</summary>
+        void WakeEarthVisuals()
+        {
+            if (earth == null) return;
+            foreach (var d in earth.GetComponentsInChildren<EarthDeformer>(true))
+                d.enabled = true;
+        }
+
         /// <summary>Descent finished - the ship is parked on the lab pad; start the
         /// guided step-by-step tour of the interferometer.</summary>
         internal void OnLabArrived()
         {
             _phase = Phase.InLab;
-            if (lab != null) lab.StartTour();
             if (nextButton != null) nextButton.gameObject.SetActive(true);
-            UiSpotlightTarget.Show("lab-next");
+            if (lab != null) lab.StartTour();
         }
 
         /// <summary>The last tour step is done: hand control back and offer the
@@ -273,8 +348,11 @@ namespace Project8.Story
                     "het flikkeren dat een voorbije golf verraadt. Kijk rustig rond in " +
                     "het lab, of druk op MISSIE HERSTARTEN voor de hele reis opnieuw.");
             SetButtons(false, false, true);
+            if (restartButton != null) restartButton.interactable = false;
             if (nextButton != null) nextButton.gameObject.SetActive(false);
             UiSpotlightTarget.Clear();
+            PromptAfterNarration("restart", 0f,
+                () => { if (restartButton != null) restartButton.interactable = true; });
         }
 
         /// <summary>Reset the journey in place: ship back at its parked start, the
@@ -284,9 +362,11 @@ namespace Project8.Story
         {
             _preview = false;
             _phase = Phase.Waiting;
+            _canStartMission = false;
             ship.SetPositionAndRotation(_initialShipPos, _initialShipRot);
             _rideOffset = ship.position - AxisPoint(SOf(ship.position));
             simulation.RestartAt(0f, false);
+            WakeEarthVisuals();
             if (lab != null) lab.ResetTour();
             Narrate("Rick: Welcome aboard. Ahead of us - seen side-on - two black holes " +
                     "are about to crash into each other. That collision sends ripples " +
@@ -298,6 +378,14 @@ namespace Project8.Story
                     "gaten op het punt te botsen. Die klap stuurt rimpelingen door de " +
                     "ruimte zelf: zwaartekrachtgolven. Druk op MISSIE STARTEN.");
             SetButtons(true, false, false);
+            if (startButton != null) startButton.interactable = false;
+            UiSpotlightTarget.Clear();
+            PromptAfterNarration("start", 0f,
+                () =>
+                {
+                    _canStartMission = true;
+                    if (startButton != null) startButton.interactable = true;
+                });
         }
 
         // ------------------------------------------------- preview transport --
@@ -373,8 +461,15 @@ namespace Project8.Story
         /// resumes the same clock without restarting anything.</summary>
         public void TogglePlayback()
         {
-            if (_phase == Phase.Waiting && !_preview) StartMission();
-            else simulation.TogglePlayPause();
+            if (_phase == Phase.Waiting)
+            {
+                if (!_preview && _canStartMission) StartMission();
+                return;
+            }
+            // Mid-descent everything stays frozen - the transport button must not
+            // thaw the wave or Earth while the ship sinks into the crust.
+            if (_phase == Phase.Diving || _phase == Phase.EnteringLab) return;
+            simulation.TogglePlayPause();
         }
 
         void Update()
@@ -440,7 +535,11 @@ namespace Project8.Story
                                 "golf door de Aarde reageert. Druk op DOORGAAN en we " +
                                 "duiken ondergronds om te zien hoe de detector hem voelt.");
                         SetButtons(false, true, false);
-                        UiSpotlightTarget.Show("continue");
+                        if (continueButton != null) continueButton.interactable = false;
+                        PromptAfterNarration("continue", 0f, () =>
+                        {
+                            if (continueButton != null) continueButton.interactable = true;
+                        });
                     }
                     break;
                 }

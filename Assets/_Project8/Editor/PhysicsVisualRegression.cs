@@ -61,6 +61,17 @@ namespace Project8.EditorTools
             Debug.Log("[Project8] Physics visual regression: ALL CHECKS PASSED");
         }
 
+        /// <summary>Batch-safe entry point: the normal runner needs a saved
+        /// active scene before it can create its additive throwaway scene.</summary>
+        public static void RunBatch()
+        {
+            var active = SceneManager.GetActiveScene();
+            if (!active.IsValid() || string.IsNullOrEmpty(active.path))
+                EditorSceneManager.OpenScene($"{Root}/Scenes/Main.unity",
+                    OpenSceneMode.Single);
+            Run();
+        }
+
         static void Check(bool cond, string name)
         {
             if (cond) Debug.Log($"[Project8]   PASS  {name}");
@@ -490,25 +501,33 @@ namespace Project8.EditorTools
             txt.fontSize = 28;
             var subs = go.AddComponent<RickSubtitles>();
             subs.text = txt;
-            subs.ShowNarration(latin);
+            subs.ShowNarration("First narration line.");
             string first = txt.text;
-            Check(!string.IsNullOrEmpty(first), "narration shows its first page");
+            subs.ShowNarration("Second narration line.");
+            Check(txt.text == first,
+                "a new narration does not replace the line currently being read");
+            Check(subs.Busy && subs.PendingStoryPages >= 2,
+                "queued narration remains included in the busy state");
             subs.AdvancePageForTest();
-            Check(txt.text != first, "advance moves to the next page");
-            // Narration during an answer updates the story queue WITHOUT
-            // interrupting the answer being read.
-            subs.ShowAnswer("short answer");
-            Check(subs.IsShowingAnswer && txt.text.Contains("answer"),
-                "answer interrupts the story queue");
-            subs.ShowNarration("new story page");
-            Check(subs.IsShowingAnswer,
-                "new narration does not cut off a spoken answer");
-            subs.AdvancePageForTest(); // finish the answer
-            Check(!subs.IsShowingAnswer && txt.text.Contains("new story page"),
-                "latest story page resumes after the answer");
-            subs.AdvancePageForTest(); // finish the resumed story page too
-            Check(!subs.IsShowingAnswer && txt.text == "",
-                "story queue drains fully once the resumed page ends");
+            Check(txt.text == "Second narration line.",
+                "queued narration starts after the current line completes");
+            subs.AdvancePageForTest();
+
+            subs.ShowNarration("Story before answer.");
+            subs.ShowAnswer("Short answer.");
+            Check(!subs.IsShowingAnswer && txt.text == "Story before answer.",
+                "AI answer waits instead of interrupting story speech");
+            subs.ShowNarration("Story after answer.");
+            subs.AdvancePageForTest();
+            Check(subs.IsShowingAnswer && txt.text == "Short answer.",
+                "queued AI answer plays after current story line");
+            subs.AdvancePageForTest();
+            Check(!subs.IsShowingAnswer && txt.text == "Story after answer.",
+                "later story line resumes after the queued answer");
+            subs.AdvancePageForTest();
+            Check(!subs.Busy && txt.text == "",
+                "subtitle and speech queues drain in order");
+            Object.DestroyImmediate(go);
         }
 
         // ------------------------------------------------ four-slot wave library

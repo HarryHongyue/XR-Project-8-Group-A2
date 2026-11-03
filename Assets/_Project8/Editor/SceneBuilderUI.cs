@@ -30,7 +30,6 @@ namespace Project8.EditorTools
         static readonly Color GlassButtonTint = new Color(0.16f, 0.24f, 0.36f, 0.55f);
         static readonly Color GlassInsetTint = new Color(0.05f, 0.08f, 0.13f, 0.62f);
         static readonly Color GlassCardTint = new Color(0.12f, 0.18f, 0.28f, 0.50f);
-        static readonly Color GlassShadowTint = new Color(0f, 0f, 0f, 0.18f);
         static readonly Color InkPrimary = new Color(0.95f, 0.97f, 1f);
         static readonly Color InkSecondary = new Color(0.72f, 0.76f, 0.85f);
         static readonly Color InkFaint = new Color(0.55f, 0.58f, 0.68f, 0.9f);
@@ -69,25 +68,13 @@ namespace Project8.EditorTools
             return mat;
         }
 
-        /// <summary>Stretched rounded-glass background + a soft non-raycast
-        /// shadow plate offset below it. Decorative - never blocks pointer.</summary>
+        /// <summary>One rounded smoke-glass face per panel. Avoid the old offset
+        /// shadow plate: it looked like a second misaligned panel in VR.</summary>
         static LiquidGlassGraphic GlassBG(RectTransform parent, GlassRole role,
-            Color tint, bool shadow = true)
+            Color tint)
         {
-            if (shadow)
-            {
-                var sh = NewUIObject("GlassShadow", parent);
-                Stretch(sh);
-                sh.anchoredPosition = new Vector2(0f, -8f);
-                var sg = sh.gameObject.AddComponent<LiquidGlassGraphic>();
-                sg.material = GlassMat(GlassRole.Panel);
-                sg.color = GlassShadowTint;
-                sg.raycastTarget = false;
-                sh.SetSiblingIndex(0); // rendered behind everything
-            }
             var g = NewUIObject("Glass", parent);
             Stretch(g);
-            g.SetSiblingIndex(shadow ? 1 : 0);
             var gr = g.gameObject.AddComponent<LiquidGlassGraphic>();
             gr.material = GlassMat(role);
             gr.color = tint;
@@ -216,6 +203,7 @@ namespace Project8.EditorTools
             story.nextButton = Btn(rt, "Btn_Next", "NEXT",
                 Vector2.zero, 240f, story.Advance);
             story.nextButton.gameObject.SetActive(false);
+            story.nextButton.gameObject.AddComponent<UiSpotlightTarget>().id = "lab-next";
             story.startButton.gameObject.AddComponent<UiSpotlightTarget>().id = "start";
             story.continueButton.gameObject.AddComponent<UiSpotlightTarget>().id = "continue";
             story.restartButton.gameObject.AddComponent<UiSpotlightTarget>().id = "restart";
@@ -346,8 +334,12 @@ namespace Project8.EditorTools
         static void BuildRickAvatar(Transform ship, Vector3 eye, AITutor tutor,
             Project8.UI.RickVoice voice, RickSubtitles subtitles)
         {
+            // The avatar + everything anchored to it (composer below, mission
+            // history above) must sit CLEAR of the control panel on the right
+            // (panel spans ship-local x in [-0.44, 0.68]): park the canvas far
+            // right so no edge of any child can slide under the panel.
             var rt = MakeWorldCanvas(ship, "RickAvatar", new Vector2(480f, 260f),
-                new Vector3(0.80f, 1.02f, 1.20f), 0.0011f, eye, interactive: true);
+                new Vector3(1.15f, 1.02f, 1.20f), 0.0011f, eye, interactive: true);
             // No root hit-area here: the composer opens/closes, so a full-size
             // blocker would swallow mouse-look rays across an invisible 480x260
             // region. Only the open composer window and the avatar chip (itself
@@ -367,7 +359,9 @@ namespace Project8.EditorTools
             chat.voiceInput = vi;
 
             var window = NewUIObject("ChatWindow", rt);
-            window.anchoredPosition = new Vector2(95f, 70f);
+            // Keep the question composer below-left of the avatar; the persistent
+            // history board is stacked above it and must never overlap.
+            window.anchoredPosition = new Vector2(-280f, -170f);
             window.sizeDelta = new Vector2(460f, 160f);
             PanelHitArea(window);
             GlassBG(window, GlassRole.Panel, GlassPanelTint);
@@ -386,8 +380,8 @@ namespace Project8.EditorTools
             chat.chatWindow = window.gameObject;
             window.gameObject.SetActive(false);
 
-            // Round avatar chip, always visible - same liquid-glass language
-            // as the rest of the cockpit (rounded squircle + inset letter).
+            // Round avatar chip, always visible, with its own runtime-drawn
+            // face sprite so the scene never depends on an unsaved editor texture.
             var avatar = NewUIObject("Avatar", rt);
             avatar.anchoredPosition = new Vector2(0f, -80f);
             avatar.sizeDelta = new Vector2(80f, 80f);
@@ -397,8 +391,9 @@ namespace Project8.EditorTools
             var avBtn = avatar.gameObject.AddComponent<Button>();
             avBtn.targetGraphic = avGlass;
             var avColors = avBtn.colors;
-            avColors.highlightedColor = new Color(1.7f, 1.75f, 1.8f, 1f);
-            avColors.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
+            avColors.normalColor = Color.white;
+            avColors.highlightedColor = new Color(0.82f, 0.94f, 1f, 1f);
+            avColors.pressedColor = new Color(0.58f, 0.82f, 0.96f, 1f);
             avBtn.colors = avColors;
             UnityEventTools.AddPersistentListener(avBtn.onClick, chat.ToggleChat);
             // Procedural cartoon face so the button reads as a character, not a
@@ -407,8 +402,10 @@ namespace Project8.EditorTools
             face.anchorMin = Vector2.zero; face.anchorMax = Vector2.one;
             face.offsetMin = new Vector2(6f, 16f); face.offsetMax = new Vector2(-6f, -4f);
             var faceImg = face.gameObject.AddComponent<Image>();
-            faceImg.sprite = RickFaceSprite();
+            faceImg.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Resources/RickFace.png");
+            faceImg.preserveAspect = true;
             faceImg.raycastTarget = false;
+            face.gameObject.AddComponent<RickFaceIcon>();
             var avText = MakeText(avatar, "Tag", "RICK", 11, FontStyle.Bold,
                 TextAnchor.MiddleCenter, Color.white, new Vector2(0f, -34f),
                 new Vector2(80f, 20f));
@@ -417,48 +414,6 @@ namespace Project8.EditorTools
             avatar.gameObject.AddComponent<UiSpotlightTarget>().id = "rick-avatar";
 
             UnityEventTools.AddPersistentListener(tutor.onAnswer, chat.ShowAnswer);
-        }
-
-        /// <summary>Hand-drawn 64x64 cartoon Rick face: pale oval skin, spiky
-        /// cyan hair across the top, one unibrow, two baggy eyes and a drool
-        /// drop - instantly readable at 80px without shipping any artwork.</summary>
-        static Sprite RickFaceSprite()
-        {
-            const int S = 64;
-            var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
-            { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-            var clear = new Color(0, 0, 0, 0);
-            var skin = new Color(0.93f, 0.82f, 0.72f);
-            var hair = new Color(0.45f, 0.78f, 0.95f);
-            var dark = new Color(0.10f, 0.08f, 0.10f);
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++)
-                {
-                    float nx = (x - 32f) / 32f, ny = (y - 30f) / 30f;
-                    float d = nx * nx + ny * ny;
-                    Color c = clear;
-                    if (d < 0.95f && y < 46) c = skin;                     // face oval
-                    if (y >= 46 && d < 1.0f)                             // hair band
-                    {
-                        int spike = ((x + (y - 46) * 2) / 8) % 2;
-                        c = spike == 0 ? hair : hair * 0.85f;
-                    }
-                    if (y >= 40 && y < 46 && Mathf.Abs(nx) < 0.85f) c = hair; // hairline
-                    if (y == 30 && Mathf.Abs(nx) < 0.55f) c = dark;         // unibrow
-                    if (y >= 24 && y <= 29)                               // eyes
-                    {
-                        float ex = Mathf.Abs(nx) - 0.28f;
-                        if (ex * ex + Mathf.Pow((y - 26.5f) / 4.5f, 2) < 0.06f) c = Color.white;
-                        if (ex * ex + Mathf.Pow((y - 26.5f) / 3f, 2) < 0.015f) c = dark;
-                    }
-                    if (y >= 19 && y <= 22 && Mathf.Abs(nx) > 0.2f &&
-                        Mathf.Abs(nx) < 0.36f) c = skin * 0.82f;          // eye bags
-                    if (y >= 12 && y <= 15 && Mathf.Abs(nx) < 0.30f) c = dark * 0.8f; // mouth
-                    if (y >= 8 && y <= 11 && Mathf.Abs(nx) < 0.06f) c = hair; // drool
-                    tex.SetPixel(x, y, c);
-                }
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f));
         }
 
         // -------------------------------------------------- control panel ---
@@ -571,8 +526,9 @@ namespace Project8.EditorTools
                 var cardBtn = card.gameObject.AddComponent<Button>();
                 cardBtn.targetGraphic = cardGlass;
                 var cc = cardBtn.colors;
-                cc.highlightedColor = new Color(1.7f, 1.75f, 1.8f, 1f);
-                cc.pressedColor = new Color(1.4f, 1.55f, 1.7f, 1f);
+                cc.normalColor = Color.white;
+                cc.highlightedColor = new Color(0.86f, 0.95f, 1f, 1f);
+                cc.pressedColor = new Color(0.68f, 0.88f, 1f, 1f);
                 cc.disabledColor = new Color(0.6f, 0.6f, 0.65f, 0.5f);
                 cardBtn.colors = cc;
                 int slot = i;
@@ -660,7 +616,7 @@ namespace Project8.EditorTools
             var readout = NewUIObject("ETReadout", etPage);
             readout.anchoredPosition = new Vector2(0f, 100f);
             readout.sizeDelta = new Vector2(900f, 90f);
-            GlassBG(readout, GlassRole.Inset, GlassInsetTint, shadow: false);
+            GlassBG(readout, GlassRole.Inset, GlassInsetTint);
             et.inspectorText = MakeText(readout, "Text",
                 "D1  LF  phase --   signal --\n      HF  phase --   signal --",
                 22, FontStyle.Normal, TextAnchor.MiddleCenter, InkPrimary,

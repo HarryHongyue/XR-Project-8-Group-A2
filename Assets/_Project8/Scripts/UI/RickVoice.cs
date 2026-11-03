@@ -21,15 +21,26 @@ namespace Project8.UI
         [Range(-10, 10)] public int rate = 2; // was -1: too slow vs the subtitles
         public bool muted;
 
-        /// <summary>True while a clip is being rendered or played - the subtitle
-        /// presenter holds each page on screen until speech finishes.</summary>
-        public bool IsSpeaking => _rendering ||
-            (_source != null && _source.isPlaying);
+        /// <summary>True while TTS is rendering, queued or playing. The Android
+        /// path polls TextToSpeech.isSpeaking; it does not use the AudioSource.</summary>
+        public bool IsSpeaking
+        {
+            get
+            {
+                if (_source != null && _source.isPlaying) return true;
+                if (_renderingJob != 0 && _renderingJob == _job) return true;
+#if UNITY_ANDROID && !UNITY_EDITOR
+                return _androidSpeaking;
+#else
+                return false;
+#endif
+            }
+        }
 
         AudioSource _source;
         int _job;
         bool _available;
-        bool _rendering;
+        int _renderingJob;
 
         void Awake()
         {
@@ -63,45 +74,177 @@ namespace Project8.UI
         /// language (zh / nl / en) just like the Windows System.Speech path.</summary>
         class TtsInitListener : AndroidJavaProxy
         {
-            public TtsInitListener() : base("android.speech.tts.TextToSpeech$OnInitListener") { }
+            readonly RickVoice _owner;
+            public TtsInitListener(RickVoice owner)
+                : base("android.speech.tts.TextToSpeech$OnInitListener")
+            {
+                _owner = owner;
+            }
             // ReSharper disable once InconsistentNaming - Android interface signature
-            public void onInit(int status) { } // TextToSpeech.ERROR == -1; calls fail gracefully anyway
+            public void onInit(int status) => _owner.OnTtsInitialized(status);
         }
 
         AndroidJavaObject _tts;
+        TtsInitListener _ttsInitListener;
         bool _ttsFailed;
+        bool _ttsReady;
+        bool _androidSpeaking;
+        float _androidSpeechGuardUntil;
+        float _nextAndroidPoll;
+        string _pendingAndroidText;
+        int _pendingAndroidJob;
+
+        void Update()
+        {
+            if (_tts == null || Time.unscaledTime < _nextAndroidPoll) return;
+            _nextAndroidPoll = Time.unscaledTime + 0.1f;
+            if (Time.unscaledTime < _androidSpeechGuardUntil) return;
+            try
+            {
+                _androidSpeaking = _tts.Call<bool>("isSpeaking");
+            }
+            catch (System.Exception e)
+            {
+                _androidSpeaking = false;
+                Debug.LogWarning("[Project8] Android TTS status check failed: " + e.Message);
+            }
+        }
 
         void SpeakAndroid(string text)
         {
             if (_ttsFailed) return;
             try
             {
+                _pendingAndroidText = text;
+                _pendingAndroidJob = ++_job;
+                _androidSpeaking = true;
                 if (_tts == null)
                 {
                     using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
                     using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                    {
+                        _ttsInitListener = new TtsInitListener(this);
                         _tts = new AndroidJavaObject("android.speech.tts.TextToSpeech",
-                            activity, new TtsInitListener());
+                            activity, _ttsInitListener);
+                    }
                 }
-                string iso = ExperienceSettings.IsChinese ? "zh"
-                    : ExperienceSettings.IsDutch ? "nl" : "en";
-                using (var locale = new AndroidJavaObject("java.util.Locale", iso))
-                    _tts.Call<int>("setLanguage", locale);
-                _tts.Call<int>("setSpeechRate", Mathf.Clamp(1f + rate * 0.1f, 0.5f, 2f));
-                _tts.Call<int>("speak", text, 0 /* QUEUE_FLUSH */, null, "rick_" + (++_job));
+                if (_ttsReady) SpeakAndroidReadyText();
             }
             catch (System.Exception e)
             {
                 _ttsFailed = true;
+                _androidSpeaking = false;
                 Debug.LogWarning("[Project8] Android TTS unavailable: " + e.Message);
             }
+        }
+
+        void OnTtsInitialized(int status)
+        {
+            if (status != 0)
+            {
+                _ttsFailed = true;
+                _androidSpeaking = false;
+                return;
+            }
+            _ttsReady = true;
+            if (_tts != null && !string.IsNullOrEmpty(_pendingAndroidText))
+                SpeakAndroidReadyText();
+        }
+
+        void SpeakAndroidReadyText()
+        {
+            string text = _pendingAndroidText;
+            int job = _pendingAndroidJob;
+            _pendingAndroidText = null;
+            if (string.IsNullOrEmpty(text) || job != _job) return;
+
+            try
+            {
+                string iso = ExperienceSettings.IsChinese ? "zh"
+                    : ExperienceSettings.IsDutch ? "nl" : "en";
+                string localeTag = ExperienceSettings.IsChinese ? "zh-CN"
+                    : ExperienceSettings.IsDutch ? "nl-NL" : "en-US";
+                using (var locale = new AndroidJavaObject("java.util.Locale", localeTag))
+                    _tts.Call<int>("setLanguage", locale);
+
+                // Prefer a system voice whose name advertises a male variant;
+                // keep the locale-selected system voice if none is installed.
+                bool maleVoiceSelected = false;
+                string maleVoiceName = "";
+                try
+                {
+                    using (var voices = _tts.Call<AndroidJavaObject>("getVoices"))
+                    using (var iterator = voices.Call<AndroidJavaObject>("iterator"))
+                    {
+                        while (iterator.Call<bool>("hasNext"))
+                        {
+                            using (var candidate = iterator.Call<AndroidJavaObject>("next"))
+                            {
+                                string name = candidate.Call<string>("getName");
+                                bool sameLanguage = !string.IsNullOrEmpty(name) &&
+                                    (iso == "zh"
+                                        ? name.IndexOf("zh", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                          name.IndexOf("cmn", System.StringComparison.OrdinalIgnoreCase) >= 0
+                                        : name.IndexOf(iso, System.StringComparison.OrdinalIgnoreCase) >= 0);
+                                bool masculineName = !string.IsNullOrEmpty(name) &&
+                                    (name.IndexOf("male", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                     name.IndexOf("masculine", System.StringComparison.OrdinalIgnoreCase) >= 0);
+                                if (sameLanguage && masculineName)
+                                {
+                                    _tts.Call<int>("setVoice", candidate);
+                                    maleVoiceSelected = true;
+                                    maleVoiceName = name;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (System.Exception)
+                {
+                    // Some Android engines do not expose a selectable male voice.
+                }
+
+                // Some Android engines omit gender from voice names; use a
+                // noticeably lower pitch rather than the default high voice.
+                _tts.Call<int>("setPitch", maleVoiceSelected ? 1f : 0.65f);
+                Debug.Log(maleVoiceSelected
+                    ? "[Project8] Android male TTS voice: " + maleVoiceName
+                    : "[Project8] No named male TTS voice for " + localeTag +
+                      "; using lower-pitch system voice.");
+                _tts.Call<int>("setSpeechRate", Mathf.Clamp(1f + rate * 0.1f, 0.5f, 2f));
+                int result = _tts.Call<int>("speak", text, 0 /* QUEUE_FLUSH */,
+                    null, "rick_" + job);
+                _androidSpeaking = result >= 0;
+                _androidSpeechGuardUntil = Time.unscaledTime + 0.35f;
+            }
+            catch (System.Exception e)
+            {
+                _androidSpeaking = false;
+                Debug.LogWarning("[Project8] Android TTS playback failed: " + e.Message);
+            }
+        }
+
+        void OnDestroy()
+        {
+            if (_tts == null) return;
+            try
+            {
+                _tts.Call("stop");
+                _tts.Call("shutdown");
+                _tts.Dispose();
+            }
+            catch (System.Exception) { }
+            _tts = null;
+            _ttsInitListener = null;
+            _androidSpeaking = false;
         }
 #endif
 
         IEnumerator RenderAndPlay(string text)
         {
             int job = ++_job;
-            _rendering = true;
+            _renderingJob = job;
             if (_source.isPlaying) _source.Stop();
 
             string dir = Application.temporaryCachePath;
@@ -111,13 +254,17 @@ namespace Project8.UI
 
             string iso = ExperienceSettings.IsChinese ? "zh"
                 : ExperienceSettings.IsDutch ? "nl" : "en";
+            string maleVoiceSelection =
+                "$voices = $s.GetInstalledVoices() | Where-Object " +
+                "{$_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq '" + iso + "'}; " +
+                "$v = $voices | Where-Object " +
+                "{$_.VoiceInfo.Gender.ToString() -eq 'Male'} | Select-Object -First 1; " +
+                "if (-not $v) { $v = $voices | Select-Object -First 1 }; " +
+                "if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; ";
             string script =
                 "Add-Type -AssemblyName System.Speech; " +
                 "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
-                "$v = $s.GetInstalledVoices() | Where-Object " +
-                "{$_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq '" + iso + "'} | " +
-                "Select-Object -First 1; " +
-                "if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; " +
+                maleVoiceSelection +
                 "$s.Rate = " + rate + "; $s.Volume = " + volume + "; " +
                 "$s.SetOutputToWaveFile('" + wav.Replace("'", "''") + "'); " +
                 "$s.Speak([IO.File]::ReadAllText('" + txt.Replace("'", "''") +
@@ -161,16 +308,24 @@ namespace Project8.UI
                 done = true;
             });
             while (!done) yield return null;
-            _rendering = false;
 
-            if (job != _job || !File.Exists(wav)) yield break; // a newer line took over
+            if (job != _job || !File.Exists(wav))
+            {
+                if (_renderingJob == job) _renderingJob = 0;
+                yield break;
+            }
             using (var req = UnityWebRequestMultimedia.GetAudioClip(
                        "file:///" + wav.Replace('\\', '/'), AudioType.WAV))
             {
                 yield return req.SendWebRequest();
-                if (req.result != UnityWebRequest.Result.Success || job != _job) yield break;
+                if (req.result != UnityWebRequest.Result.Success || job != _job)
+                {
+                    if (_renderingJob == job) _renderingJob = 0;
+                    yield break;
+                }
                 _source.clip = DownloadHandlerAudioClip.GetContent(req);
                 _source.Play();
+                if (_renderingJob == job) _renderingJob = 0;
             }
         }
     }

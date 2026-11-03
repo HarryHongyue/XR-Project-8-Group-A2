@@ -16,9 +16,9 @@ namespace Project8.EditorTools
     public static class QuestBuild
     {
         const string PackageId = "com.ZuydXRGroupA2.Project8GW";
-        const string ApkPath = "Builds/Project8-Quest3.apk";
+        const string ApkPath = "Builds/Project8-Quest3-v0.8.3.apk";
         const string ExePath = "Builds/Windows/Project8.exe";
-        const string AppVersion = "0.5.0";
+        const string AppVersion = "0.8.3";
         const string XrSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
 
         /// <summary>Everything a Quest APK needs: IL2CPP+ARM64, minSdk 29, package
@@ -35,7 +35,7 @@ namespace Project8.EditorTools
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
             PlayerSettings.SetApplicationIdentifier(android, PackageId);
             PlayerSettings.bundleVersion = AppVersion;
-            PlayerSettings.Android.bundleVersionCode = 5; // 0.5.0 -> code 5
+            PlayerSettings.Android.bundleVersionCode = 11; // 0.8.3 -> code 11
             // AITutor talks to the NVIDIA endpoint over HTTPS; VoiceInteraction
             // uses Microphone (RECORD_AUDIO is auto-added by Unity for mic use
             // and requested at runtime before first recording).
@@ -101,6 +101,13 @@ namespace Project8.EditorTools
         [MenuItem("Project 8/Build Quest APK")]
         public static bool BuildQuestApk()
         {
+            if (System.IO.File.Exists(ApkPath))
+            {
+                Debug.LogError($"[Project8] Refusing to overwrite existing APK: {ApkPath}");
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                return false;
+            }
+
             ConfigureAndroidForQuest();
             var scenes = EditorBuildSettings.scenes
                 .Where(s => s.enabled).Select(s => s.path).ToArray();

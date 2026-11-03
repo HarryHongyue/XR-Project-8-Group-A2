@@ -55,9 +55,13 @@ namespace Project8.Interaction
 
         Behaviour[] _poseDrivers;
         GameObject _deviceSim;
+        Coroutine _guidedLookRoutine;
 
         void Start()
         {
+            // Apply the one-face glass theme and readable button states to old
+            // serialized scenes too, including Welcome (which has no StoryDirector).
+            Project8.UI.RuntimeCockpitTheme.Apply(transform);
             if (seatedCamera != null)
                 _poseDrivers = seatedCamera.GetComponents<Behaviour>()
                     .Where(b => b.GetType().Name.Contains("TrackedPoseDriver")).ToArray();
@@ -118,6 +122,75 @@ namespace Project8.Interaction
         public void ClosePanels() => SetDrawer(Drawer.None);
         public void GoToStory() => UnityEngine.SceneManagement.SceneManager.LoadScene("Main");
 
+        /// <summary>Gently aims the cockpit toward the current tour component.
+        /// The turn is brief; flight controls remain enabled and manual turning
+        /// cancels the guidance immediately.</summary>
+        public void GuideLookAt(Vector3 worldTarget)
+        {
+            GuideLookAt(worldTarget, null);
+        }
+
+        /// <summary>Same guidance, but also glides the ship toward `vantage` -
+        /// a viewing standoff the tour computes beside each component - so the
+        /// camera ends up facing the part instead of only yawing toward it.
+        /// Any user input cancels both the turn and the glide at once.</summary>
+        public void GuideLookAt(Vector3 worldTarget, Vector3? vantage)
+        {
+            if (seatedCamera == null) return;
+            if (_guidedLookRoutine != null) StopCoroutine(_guidedLookRoutine);
+            _guidedLookRoutine = StartCoroutine(GuideLookRoutine(worldTarget, vantage));
+        }
+
+        System.Collections.IEnumerator GuideLookRoutine(Vector3 worldTarget, Vector3? vantage)
+        {
+            float elapsed = 0f;
+            const float duration = 1.5f;
+            while (elapsed < duration && seatedCamera != null)
+            {
+                float dt = Time.unscaledDeltaTime;
+
+                // Glide toward the vantage point (lab-clamped); the seat rides
+                // with the ship, so this IS the "camera move" the tour wants.
+                if (vantage.HasValue)
+                {
+                    Vector3 v = vantage.Value;
+                    if (story != null && story.InLab)
+                        v = story.ClampLabPosition(v);
+                    transform.position = Vector3.MoveTowards(
+                        transform.position, v, 2.2f * dt);
+                }
+
+                Vector3 toTarget = worldTarget - seatedCamera.transform.position;
+                Vector3 flat = toTarget;
+                flat.y = 0f;
+                Vector3 forward = transform.forward;
+                forward.y = 0f;
+                if (flat.sqrMagnitude > 0.001f && forward.sqrMagnitude > 0.001f)
+                {
+                    float angle = Vector3.SignedAngle(forward, flat, Vector3.up);
+                    float turn = Mathf.Clamp(angle, -140f * dt, 140f * dt);
+                    transform.RotateAround(seatedCamera.transform.position, Vector3.up, turn);
+                }
+
+                if (_desktop)
+                {
+                    Vector3 local = transform.InverseTransformDirection(
+                        worldTarget - seatedCamera.transform.position);
+                    if (local.z > 0.01f)
+                    {
+                        float pitch = Mathf.Atan2(local.y, local.z) * Mathf.Rad2Deg;
+                        _pitch = Mathf.MoveTowards(_pitch,
+                            Mathf.Clamp(pitch, -60f, 70f), 90f * dt);
+                        seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+                    }
+                }
+
+                elapsed += dt;
+                yield return null;
+            }
+            _guidedLookRoutine = null;
+        }
+
         void SetDrawer(Drawer drawer)
         {
             _drawer = drawer;
@@ -173,6 +246,10 @@ namespace Project8.Interaction
                     move = ReadStick(UnityEngine.InputSystem.XR.XRController.leftHand);
                 if (turn == Vector2.zero)
                     turn = ReadStick(UnityEngine.InputSystem.XR.XRController.rightHand);
+                // Any deliberate thrust also cancels a tour glide - the user's
+                // hand always wins over the camera guide.
+                if (move.sqrMagnitude > 0.04f || Mathf.Abs(turn.y) > 0.15f)
+                    CancelGuidedLook();
                 Vector3 fwd = transform.forward; fwd.y = 0f;
                 Vector3 rgt = transform.right; rgt.y = 0f;
                 if (fwd.sqrMagnitude > 0.01f)
@@ -182,8 +259,13 @@ namespace Project8.Interaction
                         Vector3.up * turn.y * 0.6f) * flightSpeed * Time.deltaTime;
                 }
                 if (Mathf.Abs(turn.x) > 0.15f)
+                {
+                    CancelGuidedLook();
                     transform.RotateAround(seatedCamera.transform.position, Vector3.up,
                         turn.x * 90f * Time.deltaTime);
+                }
+                if (story != null && story.InLab)
+                    transform.position = story.ClampLabPosition(transform.position);
             }
 
             if (!_desktop || Keyboard.current == null) return;
@@ -206,7 +288,9 @@ namespace Project8.Interaction
             // Desktop Enter advances the story only - it never opens panels.
             if (keys.enterKey.wasPressedThisFrame && story != null)
                 story.Advance();
-            bool piloting = _drawer == Drawer.None && (story == null || story.CanPilot);
+            bool labFreeFlight = story != null && story.InLab;
+            bool piloting = (_drawer == Drawer.None || labFreeFlight) &&
+                            (story == null || story.CanPilot);
             if (piloting)
             {
                 Vector3 movement = Vector3.zero;
@@ -216,9 +300,12 @@ namespace Project8.Interaction
                 if (keys.dKey.isPressed) movement += transform.right;
                 if (keys.eKey.isPressed || keys.spaceKey.isPressed) movement += Vector3.up;
                 if (keys.qKey.isPressed || keys.leftCtrlKey.isPressed) movement -= Vector3.up;
+                if (movement != Vector3.zero) CancelGuidedLook();
                 float speed = flightSpeed *
                     ((keys.leftShiftKey.isPressed || keys.rightShiftKey.isPressed) ? boostMultiplier : 1f);
                 transform.position += Vector3.ClampMagnitude(movement, 1f) * speed * Time.deltaTime;
+                if (labFreeFlight && story != null)
+                    transform.position = story.ClampLabPosition(transform.position);
             }
 
             // Mouse-look runs only while the cursor is locked (Tab toggles). The
@@ -228,9 +315,19 @@ namespace Project8.Interaction
             // either you're steering the ship or you're pointing at a panel.
             if (_cursorFree || Mouse.current == null || seatedCamera == null) return;
             Vector2 delta = Mouse.current.delta.ReadValue() * lookSensitivity;
+            if (delta.sqrMagnitude > 0.01f) CancelGuidedLook();
             transform.RotateAround(seatedCamera.transform.position, Vector3.up, delta.x);
+            if (labFreeFlight && story != null)
+                transform.position = story.ClampLabPosition(transform.position);
             _pitch = Mathf.Clamp(_pitch - delta.y, -60f, 70f);
             seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+        }
+
+        void CancelGuidedLook()
+        {
+            if (_guidedLookRoutine == null) return;
+            StopCoroutine(_guidedLookRoutine);
+            _guidedLookRoutine = null;
         }
 
         static Vector2 ReadStick(UnityEngine.InputSystem.XR.XRController controller)

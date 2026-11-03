@@ -51,6 +51,17 @@ namespace Project8.Visualization
                 _restScale.z * (1f + AxisFactor(Vector3.forward)));
         }
 
+        /// <summary>Snap the body back to its un-deformed rest scale and freeze
+        /// this component - the surface stops spinning and no further strain is
+        /// applied. Called when the story locks the wave off before the descent.
+        /// Re-enable the component to resume the normal per-frame update.</summary>
+        public void RestoreRest()
+        {
+            if (_restScale == Vector3.zero) _restScale = transform.localScale;
+            transform.localScale = _restScale;
+            enabled = false;
+        }
+
         /// <summary>Diagonal entry of the strain tensor along one Earth-local axis.</summary>
         float AxisFactor(Vector3 localAxis)
         {
