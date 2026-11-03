@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Standalone Providers
   m_EditorClassIdentifier: Unity.XR.Management::UnityEngine.XR.Management.XRManagerSettings
   m_RequiresSettingsUpdate: 0
-  m_AutomaticLoading: 1
-  m_AutomaticRunning: 1
+  m_AutomaticLoading: 0
+  m_AutomaticRunning: 0
   m_Loaders:
   - {fileID: 11400000, guid: dbbc59f55a1dd57498ba7b2af7a0468d, type: 2}
 --- !u!114 &-688278599691830382

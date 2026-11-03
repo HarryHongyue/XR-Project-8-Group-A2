@@ -41,6 +41,23 @@ namespace Project8.EditorTools
             // and requested at runtime before first recording).
             PlayerSettings.Android.forceInternetPermission = true;
 
+            // Android/XR builds REFUSE "Both": the project only uses the new
+            // Input System (XRI 3.x), so lock the handler to Input System.
+            // There is no public int setter in every Unity version, so patch
+            // the serialized ProjectSettings field directly.
+            var settings = AssetDatabase.LoadAllAssetsAtPath(
+                "ProjectSettings/ProjectSettings.asset");
+            if (settings != null && settings.Length > 0)
+            {
+                var so = new SerializedObject(settings[0]);
+                var handler = so.FindProperty("activeInputHandler");
+                if (handler != null && handler.intValue != 1)
+                {
+                    handler.intValue = 1;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
+
             EnsureAndroidOpenXRLoader();
 
             AssetDatabase.SaveAssets();
