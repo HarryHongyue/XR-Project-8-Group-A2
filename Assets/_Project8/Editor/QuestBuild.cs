@@ -16,9 +16,9 @@ namespace Project8.EditorTools
     public static class QuestBuild
     {
         const string PackageId = "com.ZuydXRGroupA2.Project8GW";
-        const string ApkPath = "Builds/Project8-Quest3-v0.8.4.apk";
+        const string ApkPath = "Builds/Project8-Quest3-v1.0.0.apk";
         const string ExePath = "Builds/Windows/Project8.exe";
-        const string AppVersion = "0.8.4";
+        const string AppVersion = "1.0.0";
         const string XrSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
 
         /// <summary>Everything a Quest APK needs: IL2CPP+ARM64, minSdk 29, package
@@ -35,7 +35,7 @@ namespace Project8.EditorTools
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
             PlayerSettings.SetApplicationIdentifier(android, PackageId);
             PlayerSettings.bundleVersion = AppVersion;
-            PlayerSettings.Android.bundleVersionCode = 12; // 0.8.4 -> code 12
+            PlayerSettings.Android.bundleVersionCode = 13; // 1.0.0 -> code 13
             // AITutor talks to the NVIDIA endpoint over HTTPS; VoiceInteraction
             // uses Microphone (RECORD_AUDIO is auto-added by Unity for mic use
             // and requested at runtime before first recording).

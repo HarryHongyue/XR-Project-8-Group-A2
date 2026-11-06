@@ -904,23 +904,6 @@ namespace Project8.Story
             }
         }
 
-        /// <summary>TEMPORARY test aid (called by StoryDirector's permanent
-        /// SKIP button): drop the running narration and jump straight to the
-        /// next tour step without waiting for _stepReady - remove with the
-        /// button before final delivery.</summary>
-        public void SkipStep()
-        {
-            if (_step < 0) return;
-            if (_story.subtitles != null) _story.subtitles.ResetTransport();
-            if (_step >= _steps.Count - 1)
-            {
-                RestoreVoiceRate();
-                _story.OnTourFinished();
-                return;
-            }
-            ShowStep(_step + 1);
-        }
-
         /// <summary>Flash a colour ring under one ET corner - green for a
         /// correct pick / the station that actually lit first, red for a
         /// wrong pick. The D-label above it tints to match.</summary>
