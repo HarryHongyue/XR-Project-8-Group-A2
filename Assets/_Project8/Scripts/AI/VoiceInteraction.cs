@@ -7,19 +7,21 @@ using Project8.UI;
 namespace Project8.AI
 {
     /// <summary>
-    /// Hands-free voice loop for Rick:
+    /// Push-to-talk voice loop for Rick:
     ///
-    ///   "Hey Rick" (wake word)  or  MIC button / T key
+    ///   MIC button / T key  (the ONLY entry points)
     ///     -> microphone records until ~1.3 s of silence (max 8 s)
     ///     -> audio is transcribed by the team's Whisper server
     ///        (OpenAI-compatible POST /v1/audio/transcriptions)
     ///     -> the text goes to AITutor exactly like a typed question
     ///     -> the answer comes back as subtitles AND spoken voice.
     ///
-    /// Wake-word spotting uses UnityEngine.Windows.Speech.KeywordRecognizer,
-    /// which only exists on Windows - everywhere else the MIC button is the
-    /// entry point (same flow from there). When no Whisper endpoint is
-    /// configured, Windows falls back to the built-in DictationRecognizer.
+    /// The old "Hey Rick" wake word was REMOVED: the recognizer's mic heard
+    /// the app's own TTS narration (every line starts with "Rick"), woke
+    /// itself, recorded the narration, transcribed it as a bogus question
+    /// and looped forever - the AI hold suspended the story permanently.
+    /// When no Whisper endpoint is configured, Windows falls back to the
+    /// built-in DictationRecognizer.
     ///
     /// Server configuration comes from the inspector or the WHISPER_ENDPOINT /
     /// WHISPER_API_KEY environment variables - no credentials in the repo.
@@ -41,15 +43,10 @@ namespace Project8.AI
         [Tooltip("Environment variable that holds the optional bearer token.")]
         public string whisperApiKeyEnvironmentVariable = "WHISPER_API_KEY";
 
-        [Header("Wake word (Windows only - MIC button works everywhere)")]
-        public bool wakeWordEnabled = true;
-        public string[] wakePhrases = { "hey rick", "hi rick" };
-
         public bool Listening { get; private set; }
         public bool Busy { get; private set; }
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR
-        UnityEngine.Windows.Speech.KeywordRecognizer _wake;
         UnityEngine.Windows.Speech.DictationRecognizer _dictation;
 #endif
 
@@ -105,7 +102,6 @@ namespace Project8.AI
             !string.IsNullOrEmpty(whisperModel) ? whisperModel
             : EnvVar("WHISPER_MODEL") ?? DefaultModel;
 
-        // --------------------------------------------------------- wake word
         void Start()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -114,26 +110,10 @@ namespace Project8.AI
                 UnityEngine.Android.Permission.RequestUserPermission(
                     UnityEngine.Android.Permission.Microphone);
 #endif
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR
-            if (!wakeWordEnabled) return;
-            try
-            {
-                _wake = new UnityEngine.Windows.Speech.KeywordRecognizer(wakePhrases);
-                _wake.OnPhraseRecognized += _ =>
-                {
-                    if (!Listening && !Busy) BeginListening();
-                };
-                _wake.Start();
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning("[Project8] Wake word unavailable: " + e.Message);
-            }
-#endif
         }
 
-        /// <summary>MIC button / T key entry - toggles the same listening flow
-        /// the wake word triggers.</summary>
+        /// <summary>MIC button / T key entry - the ONLY way to start or stop
+        /// the listening flow.</summary>
         public void ToggleListening()
         {
             if (Listening) EndListening();
@@ -142,14 +122,10 @@ namespace Project8.AI
 
         void BeginListening()
         {
-            // Windows allows only ONE speech recognizer at a time, and the mic
-            // device itself can be exclusive - park the wake listener while we
-            // record or dictate, then bring it back when the turn finishes.
-            WakeStop();
             if (!string.IsNullOrEmpty(Endpoint) && Microphone.devices.Length > 0)
             {
                 _clip = Microphone.Start(null, false, (int)RecordMaxSeconds + 1, SampleRate);
-                if (_clip == null) { Hint("Microphone unavailable."); WakeResume(); return; }
+                if (_clip == null) { Hint("Microphone unavailable."); return; }
                 _clipStartPos = 0;
                 _recordStart = Time.unscaledTime;
                 _silenceSince = -1f;
@@ -193,6 +169,9 @@ namespace Project8.AI
         {
             if (!Listening) return;
             Listening = false;
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR
+            StopDictation();
+#endif
             if (Microphone.IsRecording(null)) Microphone.End(null);
             if (_clip == null || _clip.samples == 0) { Busy = false; return; }
             Hint(ExperienceSettings.IsChinese ? "识别中……" : "Transcribing...");
@@ -224,7 +203,6 @@ namespace Project8.AI
                 // An exception before the first yield would otherwise kill the
                 // coroutine with Busy stuck true - freezing the story forever.
                 Busy = false;
-                WakeResume();
                 Debug.LogWarning("[Project8] Whisper request setup failed: " + e.Message);
                 Hint(ExperienceSettings.IsChinese ? "语音识别请求出错。"
                     : "Speech request failed.");
@@ -232,7 +210,6 @@ namespace Project8.AI
             }
             yield return req.SendWebRequest();
             Busy = false;
-            WakeResume();
             if (req.result != UnityWebRequest.Result.Success)
             {
                 // Surface the real status so 401/403 (auth) and 404 (bad model
@@ -278,8 +255,8 @@ namespace Project8.AI
             {
                 _dictation = new UnityEngine.Windows.Speech.DictationRecognizer();
                 _dictation.DictationResult += (text, c) => AskQuestion(text);
-                _dictation.DictationComplete += _ => { Listening = false; Busy = false; WakeResume(); };
-                _dictation.DictationError += (e, h) => { Listening = false; Busy = false; WakeResume(); };
+                _dictation.DictationComplete += _ => { Listening = false; Busy = false; };
+                _dictation.DictationError += (e, h) => { Listening = false; Busy = false; };
             }
             try
             {
@@ -292,11 +269,22 @@ namespace Project8.AI
             {
                 Listening = false;
                 Busy = false;
-                WakeResume();
                 Debug.LogWarning("[Project8] Dictation failed: " + e.Message);
                 Hint(ExperienceSettings.IsChinese
                     ? "语音识别启动失败。"
                     : "Speech recognizer failed to start.");
+            }
+        }
+
+        /// <summary>A manual toggle-off must also stop a dictation session -
+        /// otherwise the recognizer keeps running and DictationResult fires
+        /// later, shipping a question the user already cancelled.</summary>
+        void StopDictation()
+        {
+            if (_dictation != null &&
+                _dictation.Status == UnityEngine.Windows.Speech.SpeechSystemStatus.Running)
+            {
+                try { _dictation.Stop(); } catch (System.Exception) { }
             }
         }
 #endif
@@ -309,7 +297,6 @@ namespace Project8.AI
         void AskQuestion(string question)
         {
             Busy = false;
-            WakeResume();
             if (tutor != null) tutor.Ask(question);
             if (chat != null)
                 chat.SetAnswer(ExperienceSettings.IsChinese ? "Rick：思考中……"
@@ -323,28 +310,26 @@ namespace Project8.AI
             else Debug.Log("[Project8] Voice: " + message);
         }
 
-        void WakeStop()
+        /// <summary>A disabled object can leave Listening/Busy latched true
+        /// (a killed Transcribe coroutine never reaches its reset) - and
+        /// TutorChatUI mirrors Busy into aiInteracting, which suspends the
+        /// story. Always drop both flags on the way out.</summary>
+        void OnDisable()
         {
+            Listening = false;
+            Busy = false;
+            if (Microphone.IsRecording(null)) Microphone.End(null);
+            _clip = null;
+            StopAllCoroutines();
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR
-            if (_wake != null && _wake.IsRunning) _wake.Stop();
-#endif
-        }
-
-        void WakeResume()
-        {
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR
-            if (_wake != null && !_wake.IsRunning && wakeWordEnabled)
-            {
-                try { _wake.Start(); } catch (System.Exception) { }
-            }
+            StopDictation();
 #endif
         }
 
         void OnDestroy()
         {
-            if (Listening) { Listening = false; Microphone.End(null); }
+            OnDisable();
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR
-            if (_wake != null) { _wake.Stop(); _wake.Dispose(); }
             if (_dictation != null) _dictation.Dispose();
 #endif
         }

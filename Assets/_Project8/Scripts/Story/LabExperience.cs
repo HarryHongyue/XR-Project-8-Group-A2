@@ -290,7 +290,12 @@ namespace Project8.Story
 
         static Material AddMat(Color tint)
         {
-            var m = new Material(Shader.Find("Legacy Shaders/Particles/Additive"));
+            // A stripped shader must never reach new Material() - a null here
+            // kills the calling coroutine in builds (seen with the OnTop UI
+            // shader variants). Standard is the always-present fallback.
+            var sh = Shader.Find("Legacy Shaders/Particles/Additive");
+            if (sh == null) sh = Shader.Find("Standard");
+            var m = new Material(sh);
             m.SetColor("_TintColor", tint);
             return m;
         }
@@ -1022,14 +1027,22 @@ namespace Project8.Story
         Material UiOnTop()
         {
             if (_uiOnTop == null)
-                _uiOnTop = new Material(Shader.Find("Project8/UI/NoZTest"));
+            {
+                var sh = Shader.Find("Project8/UI/NoZTest");
+                if (sh == null) return null; // stripped or unincluded: keep default mat
+                _uiOnTop = new Material(sh);
+            }
             return _uiOnTop;
         }
 
         Material GlassOnTop()
         {
             if (_glassOnTop == null)
-                _glassOnTop = new Material(Shader.Find("Project8/UI/LiquidGlassOnTop"));
+            {
+                var sh = Shader.Find("Project8/UI/LiquidGlassOnTop");
+                if (sh == null) return null;
+                _glassOnTop = new Material(sh);
+            }
             return _glassOnTop;
         }
 

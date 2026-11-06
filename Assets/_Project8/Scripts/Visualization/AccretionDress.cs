@@ -151,6 +151,7 @@ namespace Project8.Visualization
 
             var sh = Shader.Find("Project8/AccretionDisc");
             if (sh == null) sh = Shader.Find("Legacy Shaders/Particles/Additive");
+            if (sh == null) sh = Shader.Find("Standard");
             var m = new Material(sh);
             if (m.HasProperty("_TintColor"))
                 m.SetColor("_TintColor", new Color(1f, 0.75f, 0.4f));
