@@ -841,6 +841,14 @@ namespace Project8.Story
         void SetVeil(float alpha)
         {
             alpha = Mathf.Clamp01(alpha);
+            // The walls are TOGGLED, not just faded: the alpha-transparent
+            // Standard variant is stripped in player builds, which rendered
+            // the box opaque black around the camera from scene start -
+            // "ship locked inside a small black box" with only panels
+            // visible. Disabled renderers are gone regardless of shader.
+            bool show = alpha > 0.001f;
+            foreach (var r in _veilWalls)
+                if (r != null && r.enabled != show) r.enabled = show;
             _veilMat.color = new Color(0f, 0f, 0f, alpha);
         }
 
