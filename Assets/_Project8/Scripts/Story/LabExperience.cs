@@ -108,6 +108,16 @@ namespace Project8.Story
             public Quaternion rot;
         }
         readonly List<PanelState> _panelStates = new List<PanelState>();
+        /// <summary>Saved material of every Graphic on the reparented panels -
+        /// lab mode swaps them to ZTest-Always variants so bench geometry can
+        /// never swallow the subtitles/buttons when the user flies in close.</summary>
+        class PanelMatState
+        {
+            public UnityEngine.UI.Graphic g;
+            public Material mat;
+        }
+        readonly List<PanelMatState> _panelMats = new List<PanelMatState>();
+        Material _uiOnTop, _glassOnTop;
         bool _labImmersed;
         Evaluation.PredictionTask _prediction;
         Evaluation.PredictionTask Prediction =>
@@ -980,12 +990,32 @@ namespace Project8.Story
                     });
                     t.SetParent(_cam.transform, true);
                 }
+                // Panels ride the camera, but world-space canvases still
+                // depth-test against scene geometry - flying nose-first into
+                // the ET bench put the platform between the eye and the
+                // subtitles, blanking them. Swap every Graphic to a
+                // ZTest-Always twin for the lab visit; restored on exit.
+                foreach (var g in _cam.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+                {
+                    var m = g.material;
+                    string sn = m != null && m.shader != null ? m.shader.name : "";
+                    Material swap = sn == "Project8/UI/LiquidGlass" ? GlassOnTop()
+                        : sn == "UI/Default" || sn == "UI/NoZTest" ||
+                          string.IsNullOrEmpty(sn) ? UiOnTop()
+                        : null;
+                    if (swap == null) continue;
+                    _panelMats.Add(new PanelMatState { g = g, mat = m });
+                    g.material = swap;
+                }
             }
             else
             {
                 foreach (var r in _shipHidden)
                     if (r != null) r.enabled = true;
                 _shipHidden.Clear();
+                foreach (var s in _panelMats)
+                    if (s.g != null) s.g.material = s.mat;
+                _panelMats.Clear();
                 foreach (var s in _panelStates)
                 {
                     if (s.t == null) continue;
@@ -996,6 +1026,20 @@ namespace Project8.Story
                 }
                 _panelStates.Clear();
             }
+        }
+
+        Material UiOnTop()
+        {
+            if (_uiOnTop == null)
+                _uiOnTop = new Material(Shader.Find("Project8/UI/NoZTest"));
+            return _uiOnTop;
+        }
+
+        Material GlassOnTop()
+        {
+            if (_glassOnTop == null)
+                _glassOnTop = new Material(Shader.Find("Project8/UI/LiquidGlassOnTop"));
+            return _glassOnTop;
         }
 
         // -------------------------------------------------------- the tour ---
