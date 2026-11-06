@@ -85,12 +85,36 @@ namespace Project8.Interaction
         /// desktop/XR mode from a single isDeviceActive read misconfigures BOTH
         /// directions - in VR it leaves the XR UI input module disabled (rays can
         /// never click) and lets the keyboard/mouse device simulator swallow real
-        /// headset input. Poll for a few seconds, then commit.</summary>
+        /// headset input. Worse, OpenXR registers its display provider even with
+        /// NO headset attached (xrGetSystem fails but isDeviceActive still reads
+        /// true), so the rig waits forever for head poses that never arrive:
+        /// black screen with only the panels visible. "XR" therefore means a
+        /// usable HEAD DEVICE, not just an initialized loader - poll for both
+        /// for a few seconds, then commit.</summary>
         System.Collections.IEnumerator DetectXRThenConfigure()
         {
-            for (int i = 0; i < 8 && !XRSettings.isDeviceActive; i++)
+            bool headValid = false;
+            for (int i = 0; i < 12 && !headValid; i++)
+            {
+                if (XRSettings.isDeviceActive)
+                    headValid = UnityEngine.XR.InputDevices
+                        .GetDeviceAtXRNode(UnityEngine.XR.XRNode.Head).isValid;
                 yield return new WaitForSeconds(0.5f);
-            _desktop = !XRSettings.isDeviceActive;
+            }
+            _desktop = !headValid;
+            if (_desktop)
+            {
+                // The OpenXR display subsystem can hold the cameras in stereo
+                // mode against a session that never forms (black mirror
+                // window). Unload it so the desktop simulator renders mono.
+                var mgr = UnityEngine.XR.Management.XRGeneralSettings.Instance != null
+                    ? UnityEngine.XR.Management.XRGeneralSettings.Instance.Manager : null;
+                if (mgr != null && mgr.activeLoader != null)
+                {
+                    try { mgr.DeinitializeLoader(); }
+                    catch (System.Exception) { }
+                }
+            }
             ConfigureForMode();
             if (!_desktop) StartCoroutine(RecenterToShipForward());
         }
