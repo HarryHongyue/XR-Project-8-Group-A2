@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -54,6 +55,8 @@ namespace Project8.UI
     /// </summary>
     public static class RuntimeCockpitTheme
     {
+        static readonly HashSet<Text> _fontBumped = new HashSet<Text>();
+
         public static void Apply(Transform root)
         {
             if (root == null) return;
@@ -69,6 +72,38 @@ namespace Project8.UI
                 var style = button.GetComponent<ReadableButtonStyle>();
                 if (style == null) style = button.gameObject.AddComponent<ReadableButtonStyle>();
                 style.Apply();
+            }
+
+            SharpenText(root);
+        }
+
+        /// <summary>World-space uGUI text rasterizes at the canvas's
+        /// pixels-per-unit; at the ~0.001 cockpit scales every glyph came out
+        /// undersampled and read as a blurred double-strike. ConstantPixelSize
+        /// with scaleFactor > 1 does not touch world-canvas layout - it only
+        /// raises canvas.scaleFactor, i.e. the pixel density text glyphs
+        /// rasterize at, so identical layout renders crisp text.
+        /// Plus a uniform +15% font bump so console text fills its space.
+        /// The subtitle strip (already 28pt on a 100px band) and the mission
+        /// log (already enlarged) keep their tuned sizes.</summary>
+        static void SharpenText(Transform root)
+        {
+            foreach (var canvas in root.GetComponentsInChildren<Canvas>(true))
+            {
+                if (canvas.renderMode != RenderMode.WorldSpace) continue;
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                if (scaler == null)
+                    scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                scaler.scaleFactor = 2.5f;
+                scaler.referencePixelsPerUnit = 100f;
+            }
+            foreach (var text in root.GetComponentsInChildren<Text>(true))
+            {
+                if (text.GetComponentInParent<RickSubtitles>() != null) continue;
+                if (text.GetComponentInParent<MissionLogUI>() != null) continue;
+                if (_fontBumped.Add(text))
+                    text.fontSize = Mathf.RoundToInt(text.fontSize * 1.15f);
             }
         }
     }

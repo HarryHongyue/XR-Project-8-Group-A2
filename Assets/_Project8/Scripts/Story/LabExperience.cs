@@ -66,7 +66,17 @@ namespace Project8.Story
             public int highlightA = -1;
             public int highlightB = -1;
             public bool highlightEt;
+            /// <summary>Keeps the ET triangle model visible on steps AFTER its
+            /// reveal - the prediction step needs the stations on screen.</summary>
+            public bool showEt;
             public bool replayWave;
+            /// <summary>Space-separated UiSpotlightTarget ids lit WHILE the step
+            /// narrates (e.g. "controls" pulses the rail button as Rick says
+            /// the word) - matches the Earth-pause controls cue.</summary>
+            public string spotDuring;
+            /// <summary>Ids added once the narration finishes, next to the
+            /// NEXT button's own cue.</summary>
+            public string spotAfter;
         }
         readonly List<Step> _steps = new List<Step>();
         int _step = -1;
@@ -74,9 +84,20 @@ namespace Project8.Story
         int _highlightA = -1, _highlightB = -1;
         bool _highlightEt;
         Coroutine _focusRoutine;
+        /// <summary>World positions of the lab triangle's three corners - fed
+        /// to PredictionTask while the model is up so the question asks about
+        /// the stations the user is actually looking at.</summary>
+        Vector3[] _etStationWorld;
+        /// <summary>Floating D1/D2/D3 captions over the triangle corners -
+        /// only ever active while the triangle model itself is.</summary>
+        List<GameObject> _etStationLabels;
+        Evaluation.PredictionTask _prediction;
+        Evaluation.PredictionTask Prediction =>
+            _prediction != null ? _prediction
+                : (_prediction = Object.FindFirstObjectByType<Evaluation.PredictionTask>());
 
         // -------------------------------------------------------- materials --
-        Material _rock, _floor, _metal, _console, _glass;
+        Material _rock, _floor, _metal, _bench, _console, _glass;
         Material _beamRed, _beamCyan, _glowCyan, _detectorGlow;
 
         // demo part focus points (world space), filled during build
@@ -92,6 +113,14 @@ namespace Project8.Story
         int _mirrorALabel = -1, _mirrorBLabel = -1, _detectorLabel = -1;
         Vector3 _laserPos, _splitterPos, _armMidPos, _mirrorAPos, _mirrorBPos,
                 _detectorPos, _etPos;
+        /// <summary>The final-step ET observatory: three CLONES of the teaching
+        /// interferometer arranged as the equilateral triangle, so the reveal
+        /// shows the exact same optics the user just learned - never the old
+        /// in-space model with different mirrors.</summary>
+        GameObject _etModelRoot;
+        /// <summary>Voice rate restored after the tour (the lab narration runs
+        /// a little faster than the space introduction).</summary>
+        int _savedVoiceRate = -1;
 
         // ============================================================ build ==
         /// <summary>Called once by StoryDirector.Start, after the ship heading is
@@ -129,7 +158,9 @@ namespace Project8.Story
             _labRoot.transform.localScale = Vector3.one * LabVisualScale;
             ParkPosition = _labRoot.transform.TransformPoint(
                 -_fwd * 7.5f + Vector3.up * 1.5f);
-            _etPos = _labRoot.transform.TransformPoint(_fwd * 14f);
+            // The reveal triangle sits centred ahead - not off at the far
+            // wall: the user asked for the three stations in the middle.
+            _etPos = _labRoot.transform.TransformPoint(_fwd * 5f);
 
             BuildCavern();
             BuildEarthInterior();
@@ -170,6 +201,20 @@ namespace Project8.Story
                 if (avatarSpot == null) avatarSpot = avatar.gameObject.AddComponent<UiSpotlightTarget>();
                 avatarSpot.id = "rick-avatar";
             }
+            // The Earth-stop narration tells the user to play with the CONTROLS
+            // panel: its rail button needs a spotlight id on old scenes too.
+            if (_story.cockpit != null && _story.cockpit.compactPanel != null)
+            {
+                var controlsBtn = FindDeepChild(
+                    _story.cockpit.compactPanel.transform, "Btn_Controls");
+                if (controlsBtn != null)
+                {
+                    var spot = controlsBtn.GetComponent<UiSpotlightTarget>();
+                    if (spot == null)
+                        spot = controlsBtn.gameObject.AddComponent<UiSpotlightTarget>();
+                    spot.id = "controls";
+                }
+            }
             MissionLogUI.Attach(_ship, avatar, _cam);
             MissionLogUI.Add("Lab", Localize(
                 "Mission log online - everything Rick explains and every answer lands here.",
@@ -184,6 +229,9 @@ namespace Project8.Story
             _rock = StdMat(new Color(0.10f, 0.09f, 0.085f), 0.12f);
             _floor = StdMat(new Color(0.14f, 0.15f, 0.18f), 0.45f);
             _metal = StdMat(new Color(0.45f, 0.47f, 0.52f), 0.5f);
+            // The bench must read as dark lab furniture - a light metal slab
+            // under the strips washed out the laser and pulse beads entirely.
+            _bench = StdMat(new Color(0.09f, 0.10f, 0.13f), 0.35f);
             _console = StdMat(new Color(0.16f, 0.17f, 0.21f), 0.5f);
             _glass = StdMat(new Color(0.6f, 0.8f, 0.95f, 0.14f), 0.9f);
             SetupTransparent(_glass);
@@ -334,19 +382,11 @@ namespace Project8.Story
 
         void RelocateTelescope()
         {
-            if (_ligo == null) return;
-            // The observatory no longer floats in space: it lives on the cavern
-            // floor, forward of the demo bench, triangle still horizontal.
-            _ligo.SetParent(_labRoot.transform, false);
-            Vector3 local = _labRoot.transform.InverseTransformPoint(_etPos);
-            _ligo.localPosition = new Vector3(local.x, 0.05f, local.z);
-            _ligo.localRotation = Quaternion.identity;
-            _ligo.localScale = Vector3.one;
-            _etPos = _ligo.position;
-            // The hidden in-space object is the same canonical ET, relocated
-            // inside the cavern. Reveal it only on the final tour step so the
-            // L-shaped principle demo is not visually doubled by the triangle.
-            _ligo.gameObject.SetActive(false);
+            // The old in-space observatory model is retired: the final tour
+            // step instead reveals three clones of the SAME teaching
+            // interferometer, so the optics the user just learned are the
+            // optics they see in the triangle. Keep it permanently hidden.
+            if (_ligo != null) _ligo.gameObject.SetActive(false);
         }
 
         /// <summary>Keep the ship inside the scaled Earth interior even if the
@@ -378,12 +418,14 @@ namespace Project8.Story
             // sits near -2.9 and the readout near (-1.1, -2.0), all well inside
             // the cavern half-width of ~21 local units.
             _benchRoot = MakeBox(room, "Bench", new Vector3(2.5f, benchY * 0.5f, 2.4f),
-                new Vector3(11.5f, benchY, 9.8f), _metal);
+                new Vector3(11.5f, benchY, 9.8f), _bench);
 
             var demo = new GameObject("DemoInterferometer");
             _demoRoot = demo;
             demo.transform.SetParent(room, false);
-            demo.transform.localPosition = new Vector3(0f, benchY + 0.06f, 0f);
+            // Lifted off the tabletop: parts authored near/below demo-local
+            // y=0 used to sink inside the slab - every optic stays visible.
+            demo.transform.localPosition = new Vector3(0f, benchY + 0.30f, 0f);
             demo.transform.localRotation = Quaternion.identity;
             // Everything optical is authored in demo-local units, so this one
             // factor enlarges the whole instrument ~2.4x (user asked 2-3x).
@@ -439,22 +481,26 @@ namespace Project8.Story
 
             li.inputBeam = MakeBeam(demo.transform, "Beam_Input", -axA * 1.1f, Vector3.zero, _beamRed, 0.05f);
             li.outputBeam = MakeBeam(demo.transform, "Beam_Output", Vector3.zero, -axB * 1.05f, _beamCyan, 0.05f);
+            // Kept just under the optics plane: at the old -0.7 local depth
+            // this trace sat ~1.7 lab units below the demo root, fully buried
+            // inside the bench slab after the 2.4x optics scale-up.
             li.signalTrace = MakeBeam(demo.transform, "SignalTrace",
-                new Vector3(-1.6f, -0.7f, -1.3f), new Vector3(1.6f, -0.7f, -1.3f), _beamCyan, 0.03f);
+                new Vector3(-1.6f, -0.05f, -1.3f), new Vector3(1.6f, -0.05f, -1.3f), _beamCyan, 0.03f);
 
             li.markerA = MakePulse(demo.transform, "Marker_A");
             li.markerB = MakePulse(demo.transform, "Marker_B");
             li.pulseTrainA = new[] { MakePulse(demo.transform, "Pulse_A1"), MakePulse(demo.transform, "Pulse_A2") };
             li.pulseTrainB = new[] { MakePulse(demo.transform, "Pulse_B1"), MakePulse(demo.transform, "Pulse_B2") };
 
-            // A light over the enlarged bench.
+            // A light over the bench - dimmer now that the slab is dark:
+            // 1.6 intensity on the old pale top washed out every beam.
             var lgo = new GameObject("BenchLight");
             lgo.transform.SetParent(room, false);
             lgo.transform.localPosition = new Vector3(2.5f, 4.4f, 2.4f);
             var l = lgo.AddComponent<Light>();
             l.type = LightType.Point;
-            l.color = new Color(1f, 0.95f, 0.85f);
-            l.intensity = 1.6f;
+            l.color = new Color(0.9f, 0.95f, 1f);
+            l.intensity = 0.85f;
             l.range = 18f;
 
             // Transform local optics coordinates into world coordinates before
@@ -487,6 +533,94 @@ namespace Project8.Story
                          "爱因斯坦望远镜 · ET", "EINSTEIN TELESCOPE · ET"));
             _etLabel = etLabel.GetComponentInChildren<Text>();
             etLabel.SetActive(false);
+
+            BuildEtStations(demo.transform);
+        }
+
+        /// <summary>The full-ET reveal: three cloned copies of the teaching
+        /// interferometer itself, arranged as an equilateral triangle on the
+        /// cavern floor - the user literally sees the same laser, splitter,
+        /// 60-degree arms, mirrors and dark port they just toured. The retired
+        /// in-space model is never shown.</summary>
+        void BuildEtStations(Transform demoSource)
+        {
+            _etModelRoot = new GameObject("EtTriangleStations");
+            _etModelRoot.transform.SetParent(_labRoot.transform, false);
+            _etModelRoot.transform.localPosition =
+                _labRoot.transform.InverseTransformPoint(_etPos);
+            _etModelRoot.transform.localRotation = Quaternion.identity;
+
+            // Equilateral triangle in lab-local units: one station faces the
+            // ship side, the far edge sits between the other two corners.
+            // Each clone keeps the demo's authored optics at ~1.25x scale so
+            // the stations stay readable; arms reach ~4.1 while neighbouring
+            // corners sit 6*sqrt(3) ~= 10.4 apart - nothing overlaps.
+            const float R = 6f;
+            const float stationScale = 1.25f;
+            Vector3[] corners =
+            {
+                new Vector3(0f, 0f, -R),
+                new Vector3(-R * 0.8660254f, 0f, R * 0.5f),
+                new Vector3(R * 0.8660254f, 0f, R * 0.5f),
+            };
+            // Corner i hosts station D(i+1) - store the world positions so the
+            // prediction task can ask about THESE stations, not the retired
+            // in-space model's vertices.
+            _etStationWorld = new Vector3[corners.Length];
+            for (int i = 0; i < corners.Length; i++)
+                _etStationWorld[i] =
+                    _etModelRoot.transform.TransformPoint(corners[i]);
+            Vector3 bisector = (Vector3.right +
+                new Vector3(0.5f, 0f, 0.8660254f)).normalized; // demo's 60-deg V
+            for (int i = 0; i < corners.Length; i++)
+            {
+                var clone = Object.Instantiate(demoSource.gameObject,
+                    _etModelRoot.transform);
+                clone.name = "EtStation_D" + (i + 1);
+                // Optics float at bench height over a small plinth - the demo
+                // bench table is not part of the cloned hierarchy.
+                MakeBox(_etModelRoot.transform, "Plinth_D" + (i + 1),
+                    corners[i] + Vector3.up * 0.5f,
+                    new Vector3(4.6f, 1f, 4.6f), _bench);
+                clone.transform.localPosition =
+                    corners[i] + Vector3.up * 1.02f;
+                Vector3 toCentre = (-corners[i]).normalized;
+                float yaw = Vector3.SignedAngle(bisector, toCentre, Vector3.up);
+                clone.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+                clone.transform.localScale = Vector3.one * stationScale;
+                foreach (var c in clone.GetComponentsInChildren<Collider>(true))
+                    Object.Destroy(c);
+            }
+
+            // D1/D2/D3 float just above their stations (the optics only stand
+            // ~0.4 m tall in world space - a 1.35 m offset left the captions
+            // hovering near the ceiling instead of over their corner). Without
+            // these the prediction question has no way to say which corner is
+            // which.
+            _etStationLabels = new List<GameObject>();
+            for (int i = 0; i < corners.Length; i++)
+            {
+                var lbl = MakeLabel(_etStationWorld[i] + Vector3.up * 0.62f,
+                    "D" + (i + 1));
+                lbl.SetActive(false);
+                _etStationLabels.Add(lbl);
+            }
+
+            // A faint triangle guide-line on the floor ties the three stations
+            // into one observatory.
+            var tri = new GameObject("EtTriangleGuide");
+            tri.transform.SetParent(_etModelRoot.transform, false);
+            var lr = tri.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.positionCount = 4;
+            for (int i = 0; i < 3; i++)
+                lr.SetPosition(i, corners[i] + Vector3.up * 0.03f);
+            lr.SetPosition(3, corners[0] + Vector3.up * 0.03f);
+            lr.widthMultiplier = 0.05f;
+            lr.sharedMaterial = _beamCyan;
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            _etModelRoot.SetActive(false);
         }
 
         int AddPartLabel(Vector3 worldPos, Vector3 focusPos, string text)
@@ -796,41 +930,91 @@ namespace Project8.Story
             {
                 titleEn = "7. The Einstein Telescope", titleZh = "7. 爱因斯坦望远镜",
                 titleNl = "7. De Einstein Telescope",
-                en = "Rick: This bench is ONE Einstein Telescope interferometer channel: " +
-                     "its arms meet at 60 degrees. The full detector ahead has THREE " +
-                     "stations arranged as an equilateral triangle; each corner has a " +
-                     "low- and high-frequency instrument, six interferometers in total. " +
-                     "Its real arms are 10 km long. This is a teaching twin - light is " +
-                     "slowed, motion exaggerated, and the optical cavities and suspension " +
-                     "noise are simplified. Fly closer, or press RESTART MISSION to repeat.",
-                zh = "Rick：光学台上展示的是爱因斯坦望远镜的一条干涉仪通道，两臂夹角为 60 度。" +
-                     "前方完整的 ET 有三个测站，排成等边三角形；每个角各有一台低频和一台高频仪器，" +
-                     "总共六台干涉仪，真实臂长约 10 公里。这里是教学数字孪生：光被放慢、运动被夸大，" +
-                     "谐振腔和悬挂噪声做了简化。可以飞近观察，或点「重新开始任务」重看。",
-                nl = "Rick: Deze opstelling is ÉÉN interferometerkanaal van de Einstein " +
-                     "Telescope: de armen staan 60 graden uit elkaar. De volledige ET " +
-                     "heeft DRIE stations in een gelijkzijdige driehoek; elke hoek bevat " +
-                     "een laag- en hoogfrequent instrument, zes interferometers in totaal. " +
-                     "De echte armen zijn 10 km lang. Dit is een leermodel: licht is vertraagd, " +
-                     "beweging overdreven en de optische caviteiten vereenvoudigd. Vlieg dichterbij " +
-                     "of druk op MISSIE HERSTARTEN om opnieuw te beginnen.",
-                highlightEt = true
+                en = "Rick: Ahead stands the complete Einstein Telescope: ONE observatory " +
+                     "built as three identical interferometers, one on each corner of an " +
+                     "equilateral triangle. The corners are labelled D1, D2 and D3, and " +
+                     "each also nests a low- and a high-frequency channel - six " +
+                     "instruments in total, with real arms 10 km long. The three are not " +
+                     "independent detectors: their signals are combined, because comparing " +
+                     "when the same wavefront reaches each corner sharpens both the " +
+                     "sensitivity and the direction to the source. This is a teaching " +
+                     "twin - light slowed, motion exaggerated, cavities simplified.",
+                zh = "Rick：正前方就是完整的爱因斯坦望远镜：一座观测站，由三台完全相同的干涉仪" +
+                     "分别架在等边三角形的三个角上，标记为 D1、D2、D3；每个角还嵌套一对低频" +
+                     "和高频通道，共六台仪器，真实臂长约 10 公里。这三台不是各自独立的探测器——" +
+                     "它们的信号要联合起来用：比较同一道波前到达各角的时间差，既能提高灵敏度，" +
+                     "又能反推波源的方向。这是教学孪生——光被放慢、运动被夸大、谐振腔做了简化。",
+                nl = "Rick: Voor je staat de complete Einstein Telescope: ÉÉN observatorium " +
+                     "van drie identieke interferometers, één op elke hoek van een " +
+                     "gelijkzijdige driehoek. De hoeken heten D1, D2 en D3, en elke hoek " +
+                     "herbergt ook een laag- en hoogfrequent kanaal - zes instrumenten " +
+                     "in totaal, met echte armen van 10 km. De drie zijn geen onafhankelijke " +
+                     "detectoren: hun signalen worden gecombineerd, want vergelijken wanneer " +
+                     "hetzelfde front elke hoek bereikt, verscherpt gevoeligheid én " +
+                     "bronrichting. Leermodel - licht vertraagd, beweging overdreven.",
+                highlightEt = true, showEt = true
+            });
+            _steps.Add(new Step
+            {
+                titleEn = "8. Your turn - predict the next station",
+                titleZh = "8. 轮到你了——预测下一测站",
+                titleNl = "8. Jouw beurt - voorspel het volgende station",
+                en = "Rick: Your turn. The same wavefront does not reach all " +
+                     "three corners at once - the one nearest the merger " +
+                     "registers it first. Open CONTROLS and switch to the ET " +
+                     "tab, then press PREDICT NEXT STATION: a fresh wave is " +
+                     "fired at the triangle. Watch the ring close in and press " +
+                     "D1, D2 or D3 - whichever station you believe lights up " +
+                     "first - before the front arrives.",
+                zh = "Rick：轮到你了。同一道波前不会同时到达三个角——离并合点最近的" +
+                     "那一角最先测到。打开「控制台」切到 ET 页，点「预测下一测站」：" +
+                     "一道新的引力波会射向三角阵列。盯住逼近的波环，趁波还没到，" +
+                     "按下你认为会先亮的那一站——D1、D2 或 D3。",
+                nl = "Rick: Nu ben jij aan zet. Hetzelfde golffront bereikt de " +
+                     "drie hoeken niet tegelijk - de hoek dichtst bij de " +
+                     "samensmelting voelt hem eerst. Open CONTROLS, ga naar de " +
+                     "ET-tab en druk op VOORSPEL VOLGEND STATION: er wordt een " +
+                     "nieuwe golf op de driehoek afgevuurd. Zie de ring naderen " +
+                     "en druk op D1, D2 of D3 - het station dat volgens jou " +
+                     "eerst oplicht - vóór het front arriveert.",
+                highlightEt = true, showEt = true,
+                spotDuring = "controls",
+                spotAfter = "tab-et predict"
             });
         }
 
         /// <summary>Called by StoryDirector once the ship is parked on the lab
-        /// pad: begin the guided tour at step 0.</summary>
+        /// pad: begin the guided tour at step 0. The lab narration runs a bit
+        /// faster than the space introduction - the underground section had
+        /// slowed Rick to a crawl.</summary>
         public void StartTour()
         {
             if (_steps.Count == 0) return;
+            if (_story.voice != null)
+            {
+                _savedVoiceRate = _story.voice.rate;
+                _story.voice.rate = 5;
+            }
             ShowStep(0);
         }
 
         public void NextStep()
         {
             if (!_stepReady) return;
-            if (_step >= _steps.Count - 1) { _story.OnTourFinished(); return; }
+            if (_step >= _steps.Count - 1)
+            {
+                RestoreVoiceRate();
+                _story.OnTourFinished();
+                return;
+            }
             ShowStep(_step + 1);
+        }
+
+        void RestoreVoiceRate()
+        {
+            if (_savedVoiceRate >= 0 && _story.voice != null)
+                _story.voice.rate = _savedVoiceRate;
+            _savedVoiceRate = -1;
         }
 
         public void PrevStep()
@@ -842,15 +1026,19 @@ namespace Project8.Story
         {
             _step = -1;
             _stepReady = false;
+            if (_story.cockpit != null) _story.cockpit.ResetLookTilt();
             _highlightA = -1;
             _highlightB = -1;
             _highlightEt = false;
             if (_etLabel != null) _etLabel.gameObject.SetActive(false);
             ApplyLabelHighlights();
+            RestoreVoiceRate();
             // Mission restarts back in space: hide the cavern again so it can
             // never be seen as a floating box below the Earth.
             if (_labRoot != null) _labRoot.SetActive(false);
             if (_ligo != null) _ligo.gameObject.SetActive(false);
+            if (_etModelRoot != null) _etModelRoot.SetActive(false);
+            if (Prediction != null) Prediction.stationWorldPositions = null;
             SetDemoStationVisible(true);
             if (_story.nextButton != null) _story.nextButton.gameObject.SetActive(false);
         }
@@ -863,9 +1051,29 @@ namespace Project8.Story
             _stepReady = false;
             if (_story.nextButton != null)
                 _story.nextButton.interactable = false;
-            bool showTelescope = _step == _steps.Count - 1;
-            if (_ligo != null) _ligo.gameObject.SetActive(showTelescope);
+            bool showTelescope = s.highlightEt || s.showEt;
+            if (_ligo != null) _ligo.gameObject.SetActive(false); // retired model
+            if (_etModelRoot != null) _etModelRoot.SetActive(showTelescope);
+            if (_etStationLabels != null)
+                foreach (var lbl in _etStationLabels)
+                    if (lbl != null) lbl.SetActive(showTelescope);
+            // While the triangle is on screen the prediction task asks about
+            // ITS corners; off-screen rounds fall back to the display model.
+            if (Prediction != null)
+                Prediction.stationWorldPositions =
+                    showTelescope ? _etStationWorld : null;
+            // The reveal shows ONE observatory of three stations - keeping
+            // the teaching bench up beside it produced FOUR interferometers
+            // and constant confusion about which was which. During the ET
+            // steps the bench and its labels retire; they return on the
+            // non-ET steps (PrevStep stays consistent).
             SetDemoStationVisible(!showTelescope);
+            // Diagnostic for the "only one machine" report: tells us exactly
+            // which model each step activated.
+            Debug.Log($"[Project8] Lab step {_step}/{_steps.Count - 1}: " +
+                $"et={showTelescope} etRoot={(_etModelRoot == null ? "null" : _etModelRoot.activeSelf.ToString())} " +
+                $"stations={(_etModelRoot == null ? 0 : _etModelRoot.transform.childCount)} " +
+                $"demo={(_demoRoot == null ? "null" : _demoRoot.activeSelf.ToString())}");
             _highlightA = s.highlightA;
             _highlightB = s.highlightB;
             _highlightEt = s.highlightEt;
@@ -875,11 +1083,21 @@ namespace Project8.Story
             _story.Narrate(s.en, s.zh, s.nl);
             if (s.replayWave) _story.ReplayWaveAtFocus(FocusPoint);
             RefreshNextButton();
-            _story.PromptAfterNarration("lab-next", 3f, () =>
+            // Cue lights fire WITH the narration - e.g. the rail's CONTROLS
+            // button pulses exactly when Rick says the word, not afterwards.
+            if (!string.IsNullOrEmpty(s.spotDuring))
+                foreach (var id in s.spotDuring.Split(' '))
+                    UiSpotlightTarget.ShowAdditional(id);
+            // holdSeconds = 0: the NEXT cue stays lit until the next step
+            // clears it - a 3-second flash read as "the prompt is gone".
+            _story.PromptAfterNarration("lab-next", 0f, () =>
             {
                 _stepReady = true;
                 if (_story.nextButton != null)
                     _story.nextButton.interactable = true;
+                if (!string.IsNullOrEmpty(s.spotAfter))
+                    foreach (var id in s.spotAfter.Split(' '))
+                        UiSpotlightTarget.ShowAdditional(id);
             });
         }
 
@@ -917,14 +1135,18 @@ namespace Project8.Story
                 ? _story.cockpit : _ship.GetComponent<Interaction.CockpitControls>();
             if (cockpit == null) return;
             Vector3 focus = FocusForStep(step);
-            // Standoff behind the user's current bearing, a bit above the part.
-            Vector3 away = _ship.position - focus;
-            away.y = 0f;
-            if (away.sqrMagnitude < 0.01f) away = -_ship.forward;
-            away.y = 0f;
-            away.Normalize();
-            float standoff = step.highlightEt ? 3.2f : 1.9f;
-            Vector3 vantage = focus + away * standoff + Vector3.up * 0.55f;
+            // Always approach from the PARK side: the user may have flown
+            // anywhere between steps, so the ship's current bearing is a
+            // terrible anchor - it parked the camera behind the part staring
+            // at its back. -_fwd is the pad's forward direction toward the
+            // bench, so the vantage always ends up on the viewing side.
+            Vector3 away = -_fwd;
+            float standoff = step.highlightEt ? 3.4f : 1.7f;
+            float lift = step.highlightEt ? 1.7f : 1.05f;
+            // Park noticeably ABOVE the part: the XR guidance then pitches the
+            // user's view down onto it (the earlier flat standoff never aimed
+            // the camera at anything).
+            Vector3 vantage = focus + away * standoff + Vector3.up * lift;
             vantage = _story.ClampLabPosition(vantage);
             cockpit.GuideLookAt(focus, vantage);
         }
@@ -1004,6 +1226,7 @@ namespace Project8.Story
         public void BeginDescent()
         {
             if (!Ready) { _story.OnLabArrived(); return; }
+            if (_story.cockpit != null) _story.cockpit.ResetLookTilt();
             StartCoroutine(DescendRoutine());
         }
 
@@ -1110,6 +1333,14 @@ namespace Project8.Story
         {
             var c = go.GetComponent<Collider>();
             if (c != null) Destroy(c);
+        }
+
+        static Transform FindDeepChild(Transform root, string name)
+        {
+            if (root == null) return null;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                if (t.name == name) return t;
+            return null;
         }
     }
 }

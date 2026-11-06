@@ -45,7 +45,7 @@ MonoBehaviour:
     - light
     - splitter
     - mirror
-    answer: 'The laser makes light of one pure colour. The tilted glass plate - the beam splitter - sends half the light down each of the two arms. Mirrors at the ends send it back, and the returning beams overlap again at the splitter.'
+    answer: The laser makes light of one pure colour. The tilted glass plate - the beam splitter - sends half the light down each of the two arms. Mirrors at the ends send it back, and the returning beams overlap again at the splitter.
   - keywords:
     - interference
     - interfere
@@ -53,7 +53,7 @@ MonoBehaviour:
     - dark
     - photodetector
     - flicker
-    answer: 'Where the two beams overlap again they interfere. With equal arms every wave peak lands on a wave dip and cancels - the detector stays dark. A passing wave changes one arm differently from the other, the cancellation breaks and light flickers onto the photodetector. That flicker is the measurement.'
+    answer: Where the two beams overlap again they interfere. With equal arms every wave peak lands on a wave dip and cancels - the detector stays dark. A passing wave changes one arm differently from the other, the cancellation breaks and light flickers onto the photodetector. That flicker is the measurement.
   - keywords:
     - underground
     - lab
@@ -61,7 +61,7 @@ MonoBehaviour:
     - cavern
     - deep
     - buried
-    answer: 'Real gravitational-wave detectors sit in the quietest places engineers can find - the Einstein Telescope is designed to go ~200 metres underground - because wind, traffic and tiny tremors would shake the mirrors and drown the signal. Our lab models that.'
+    answer: Real gravitational-wave detectors sit in the quietest places engineers can find - the Einstein Telescope is designed to go ~200 metres underground - because wind, traffic and tiny tremors would shake the mirrors and drown the signal. Our lab models that.
   - keywords:
     - lf
     - hf

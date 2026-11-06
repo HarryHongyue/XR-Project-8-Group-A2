@@ -31,6 +31,8 @@ namespace Project8.AI
         UnityEngine.Windows.Speech.DictationRecognizer _dictation;
 #endif
         bool _listening;
+        Image _micIcon;
+        static Sprite _micSprite;
 
         void Start()
         {
@@ -62,6 +64,12 @@ namespace Project8.AI
             EnsureRickFace();
             if (questionInput != null)
             {
+                // Larger, clearer composer text in every scene - older saved
+                // scenes still carry the small 15 pt serialized sizes.
+                if (questionInput.textComponent != null)
+                    questionInput.textComponent.fontSize = 18;
+                if (questionInput.placeholder is Text ph0)
+                    ph0.fontSize = 18;
                 if (ExperienceSettings.IsChinese)
                 {
                     if (questionInput.textComponent != null)
@@ -80,20 +88,114 @@ namespace Project8.AI
             if (chatWindow != null)
             {
                 var rect = chatWindow.GetComponent<RectTransform>();
-                if (rect != null) rect.anchoredPosition = new Vector2(-280f, -170f);
+                if (rect != null) rect.anchoredPosition = new Vector2(-300f, -190f);
                 chatWindow.SetActive(false);
             }
             bool speechOk = Application.platform == RuntimePlatform.WindowsEditor ||
                             Application.platform == RuntimePlatform.WindowsPlayer;
             if (micButton != null && !speechOk && voiceInput == null)
                 micButton.interactable = false;
+            EnsureMicIcon();
             UpdateMicVisual();
+        }
+
+        /// <summary>Swap the plain "MIC" caption for a real microphone glyph
+        /// drawn at runtime - a capsule head on a cradle arc with a stem and
+        /// base - so the control reads as a voice button in every language.</summary>
+        void EnsureMicIcon()
+        {
+            if (micButton == null) return;
+            Transform iconT = micButton.transform.Find("MicIcon");
+            Image icon;
+            if (iconT == null)
+            {
+                var go = new GameObject("MicIcon",
+                    typeof(RectTransform), typeof(Image));
+                iconT = go.transform;
+                iconT.SetParent(micButton.transform, false);
+                var r = (RectTransform)iconT;
+                r.anchorMin = Vector2.zero;
+                r.anchorMax = Vector2.one;
+                r.offsetMin = new Vector2(12f, 10f);
+                r.offsetMax = new Vector2(-12f, -10f);
+                icon = go.GetComponent<Image>();
+            }
+            else icon = iconT.GetComponent<Image>();
+            if (icon == null) return;
+            if (_micSprite == null) _micSprite = MakeMicSprite();
+            icon.sprite = _micSprite;
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+            _micIcon = icon;
+            // Kill EVERY caption under the button, not only the wired micLabel -
+            // older scenes can carry an unreferenced "MIC" Text that still
+            // renders on top of the icon.
+            foreach (var t in micButton.GetComponentsInChildren<Text>(true))
+            {
+                t.text = "";
+                t.enabled = false;
+                t.raycastTarget = false;
+            }
+            if (micLabel != null) micLabel.text = "";
+        }
+
+        static Sprite MakeMicSprite()
+        {
+            const int W = 64, H = 64;
+            var px = new Color[W * H];
+            var cTop = new Vector2(32f, 46f);   // capsule head top-centre
+            var cBot = new Vector2(32f, 34f);   // capsule head bottom-centre
+            const float rHead = 9f;
+            for (int y = 0; y < H; y++)
+            {
+                for (int x = 0; x < W; x++)
+                {
+                    var p = new Vector2(x + 0.5f, y + 0.5f);
+                    float a = 0f;
+                    // capsule head: rounded rectangle
+                    float dHead = Mathf.Min((p - cTop).magnitude,
+                                          (p - cBot).magnitude);
+                    if (p.x >= 23f && p.x <= 41f && p.y >= cBot.y && p.y <= cTop.y)
+                        dHead = 0f;
+                    a = Mathf.Max(a, Mathf.Clamp01(rHead - dHead + 0.5f));
+                    // cradle arc: ring around the head bottom, open at the top
+                    float ring = (p - cBot).magnitude;
+                    float arc = (p.y < cBot.y - 1f)
+                        ? Mathf.Clamp01(1.6f - Mathf.Abs(ring - 15f)) : 0f;
+                    a = Mathf.Max(a, arc);
+                    // stem
+                    if (p.x >= 30.5f && p.x <= 33.5f && p.y >= 6f && p.y <= 16f)
+                        a = 1f;
+                    // base bar
+                    if (p.x >= 22f && p.x <= 42f && p.y >= 2f && p.y <= 5.5f)
+                        a = 1f;
+                    px[y * W + x] = new Color(1f, 1f, 1f, a);
+                }
+            }
+            var tex = new Texture2D(W, H, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            tex.SetPixels(px);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0f, 0f, W, H),
+                new Vector2(0.5f, 0.5f));
         }
 
         void EnsureRickFace()
         {
             Transform avatar = transform.Find("Avatar");
             if (avatar == null) return;
+
+            // Enlarge the chip in older serialized scenes too: 120 px chip
+            // parked a little higher so the bigger circle stays inside the
+            // canvas band (the composer position is repaired in Start()).
+            if (avatar is RectTransform avatarRect)
+            {
+                avatarRect.anchoredPosition = new Vector2(0f, -70f);
+                avatarRect.sizeDelta = new Vector2(120f, 120f);
+            }
 
             Transform face = avatar.Find("Face");
             if (face == null)
@@ -208,8 +310,11 @@ namespace Project8.AI
         {
             bool live = _listening ||
                 (voiceInput != null && (voiceInput.Listening || voiceInput.Busy));
-            if (micLabel != null)
-                micLabel.text = live ? "..." : "MIC";
+            if (micLabel != null) { micLabel.text = ""; micLabel.enabled = false; }
+            if (_micIcon != null)
+                _micIcon.color = live
+                    ? new Color(1f, 0.35f, 0.3f, 1f)   // recording red
+                    : new Color(0.85f, 0.95f, 1f, 0.95f);
             if (micButton != null)
             {
                 var colors = micButton.colors;
@@ -220,8 +325,46 @@ namespace Project8.AI
             }
         }
 
+        /// <summary>An empty focused box only pauses narration for a few
+        /// seconds - a stuck focus flag (XR/event-system quirk) must never
+        /// freeze the story for good. A real draft holds it indefinitely.</summary>
+        float _emptyFocusSince = -1f;
+        const float EmptyFocusHoldSeconds = 15f;
+
         void Update()
         {
+            // Tell the subtitle presenter while the user is engaged in an AI
+            // exchange: input focused or holding draft text, voice listening,
+            // a transcription running, or a question still awaiting an answer.
+            // The scripted story stays paused until the reply has fully played.
+            if (subtitles != null)
+            {
+                bool composing = false;
+                if (chatWindow != null && chatWindow.activeSelf &&
+                    questionInput != null)
+                {
+                    if (questionInput.text.Length > 0)
+                    {
+                        composing = true;
+                        _emptyFocusSince = -1f;
+                    }
+                    else if (questionInput.isFocused)
+                    {
+                        if (_emptyFocusSince < 0f)
+                            _emptyFocusSince = Time.unscaledTime;
+                        composing = Time.unscaledTime - _emptyFocusSince <
+                            EmptyFocusHoldSeconds;
+                    }
+                    else _emptyFocusSince = -1f;
+                }
+                else _emptyFocusSince = -1f;
+                bool interacting = composing ||
+                    _listening ||
+                    (voiceInput != null &&
+                     (voiceInput.Listening || voiceInput.Busy)) ||
+                    (tutor != null && tutor.IsBusy);
+                subtitles.aiInteracting = interacting;
+            }
             // Reflect the voice loop's own state on the mic button each frame -
             // red while recording OR transcribing so the user always sees it work.
             if (voiceInput == null) return;
@@ -257,6 +400,12 @@ namespace Project8.AI
                 : "Rick: thinking...");
             tutor.Ask(q);
             questionInput.text = "";
+            // Drop focus so the AI hold is driven only by the pending answer -
+            // a focus that never releases would freeze the story for good.
+            questionInput.DeactivateInputField();
+            if (UnityEngine.EventSystems.EventSystem.current != null)
+                UnityEngine.EventSystems.EventSystem.current
+                    .SetSelectedGameObject(null);
         }
 
         public void ShowAnswer(string answer)

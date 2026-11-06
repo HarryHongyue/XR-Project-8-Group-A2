@@ -64,17 +64,32 @@ namespace Project8.AI
                 if (_azureStyle) req.SetRequestHeader("api-key", _apiKey);
                 else req.SetRequestHeader("Authorization", "Bearer " + _apiKey);
             }
-            req.timeout = 60; // free-tier NIM cold-starts a model - first call can take ~40s
+            req.timeout = 30; // Foundry answers in seconds; the old NIM cold-start budget no longer applies
             yield return req.SendWebRequest();
 
             string answer = null;
             if (req.result == UnityWebRequest.Result.Success)
             {
-                var response = JsonUtility.FromJson<ChatResponse>(req.downloadHandler.text);
-                if (response != null && response.choices != null && response.choices.Length > 0 &&
-                    response.choices[0].message != null)
-                    answer = response.choices[0].message.content;
+                try
+                {
+                    var response = JsonUtility.FromJson<ChatResponse>(req.downloadHandler.text);
+                    if (response != null && response.choices != null && response.choices.Length > 0 &&
+                        response.choices[0].message != null)
+                        answer = response.choices[0].message.content;
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning("[Project8] Tutor reply JSON parse failed: " + e.Message);
+                }
             }
+            else
+            {
+                Debug.LogWarning("[Project8] Tutor remote failed: " + req.error +
+                    " (HTTP " + req.responseCode + ") - falling back to local answers.");
+            }
+            // The callback MUST fire on every outcome - a coroutine that dies
+            // before this point leaves AITutor.IsBusy stuck and freezes the
+            // scripted narration behind the AI hold for good.
             onAnswer?.Invoke(answer);
         }
 
@@ -96,15 +111,17 @@ namespace Project8.AI
 
         [Header("Optional LLM backend (OpenAI-compatible chat API)")]
         public bool useRemoteBackend = true;
-        [Tooltip("Default: a local Ollama server - free, no API key. For OpenAI/Groq/etc. " +
-                 "use e.g. https://api.openai.com/v1/chat/completions plus an API key.")]
-        public string endpoint = "http://localhost:11434/v1/chat/completions";
-        public string model = "llama3.2";
-        [Tooltip("Environment variable that holds the API key (not needed for Ollama). " +
+        [Tooltip("The team's Azure AI Foundry endpoint - OpenAI-compatible v1 " +
+                 "chat completions. Override for Ollama/Groq/OpenAI etc.")]
+        public string endpoint =
+            "https://omnigent-1-resource.services.ai.azure.com/openai/v1/chat/completions";
+        public string model = "gpt-5-mini";
+        [Tooltip("Environment variable that holds the API key. " +
                  "Never commit a key to the repo.")]
-        public string apiKeyEnvironmentVariable = "OPENAI_API_KEY";
-        [Tooltip("Azure OpenAI sends the key as an 'api-key' header instead of Bearer auth.")]
-        public bool azureStyleAuth;
+        public string apiKeyEnvironmentVariable = "FOUNDRY_OPENAI_API_KEY";
+        [Tooltip("Azure OpenAI / AI Foundry send the key as an 'api-key' header " +
+                 "instead of Bearer auth - ON for the team endpoint.")]
+        public bool azureStyleAuth = true;
         [TextArea(2, 4)]
         public string systemPrompt =
             "You are Rick, a friendly physics tutor inside a VR lesson about gravitational " +
@@ -120,12 +137,33 @@ namespace Project8.AI
         ITutorBackend _backend;
         ITutorBackend _local;
 
+        /// <summary>Environment lookup that ALSO checks the Windows User/Machine
+        /// scopes - a Unity instance launched before the vars were set still
+        /// picks them up live (same trick as VoiceInteraction.EnvVar).</summary>
+        static string EnvVar(string name)
+        {
+            string v = System.Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrEmpty(v)) return v;
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR
+            v = System.Environment.GetEnvironmentVariable(
+                name, System.EnvironmentVariableTarget.User);
+            if (!string.IsNullOrEmpty(v)) return v;
+            v = System.Environment.GetEnvironmentVariable(
+                name, System.EnvironmentVariableTarget.Machine);
+            if (!string.IsNullOrEmpty(v)) return v;
+#endif
+            return null;
+        }
+
         void Awake()
         {
             _local = new LocalTutorBackend(knowledgeBase);
             if (useRemoteBackend && !string.IsNullOrEmpty(endpoint))
             {
-                string key = System.Environment.GetEnvironmentVariable(apiKeyEnvironmentVariable);
+                string key = EnvVar(apiKeyEnvironmentVariable);
+                if (string.IsNullOrEmpty(key))
+                    Debug.LogWarning("[Project8] " + apiKeyEnvironmentVariable +
+                        " is not set - tutor answers will use the local knowledge base.");
                 _backend = new HttpTutorBackend(this, endpoint, key, model, systemPrompt, azureStyleAuth);
             }
             else
@@ -139,6 +177,10 @@ namespace Project8.AI
                 _backend.Ask("ping", _ => { });
         }
 
+        /// <summary>True between Ask() and the emitted answer - the subtitle
+        /// presenter keeps the scripted story paused while a reply is pending.</summary>
+        public bool IsBusy { get; private set; }
+
         /// <summary>Ask the tutor; the answer arrives via onAnswer. Falls back to the
         /// local knowledge base when the remote endpoint is unreachable.</summary>
         public void Ask(string question)
@@ -146,20 +188,32 @@ namespace Project8.AI
             Evaluation.ResearchLogger.Instance?.LogEvent("TutorQuestion", question ?? "");
             // Every question route (typed input AND voice) funnels here - log it.
             Project8.UI.MissionLogUI.Add("You", question);
+            IsBusy = true;
             if (_backend == _local)
             {
                 _local.Ask(question, Emit);
                 return;
             }
-            _backend.Ask(question, answer =>
+            try
             {
-                if (answer == null) _local.Ask(question, Emit);
-                else Emit(answer);
-            });
+                _backend.Ask(question, answer =>
+                {
+                    if (answer == null) _local.Ask(question, Emit);
+                    else Emit(answer);
+                });
+            }
+            catch (System.Exception e)
+            {
+                // A backend that throws synchronously (coroutine host disabled,
+                // bad URL) must not strand IsBusy - answer locally instead.
+                Debug.LogWarning("[Project8] Tutor backend threw: " + e.Message);
+                _local.Ask(question, Emit);
+            }
         }
 
         void Emit(string answer)
         {
+            IsBusy = false;
             Evaluation.ResearchLogger.Instance?.LogEvent("TutorAnswer", answer ?? "");
             onAnswer.Invoke(answer);
         }

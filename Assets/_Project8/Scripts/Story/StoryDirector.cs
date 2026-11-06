@@ -144,13 +144,17 @@ namespace Project8.Story
         {
             Narrate("Rick: Hi, I'm Rick - your AI guide for today's lesson on gravity, " +
                     "gravitational waves and how the Einstein Telescope detects them. " +
-                    "You're aboard our research ship, close to two black holes about to merge.",
+                    "You're aboard our research ship, close to two black holes about to merge. " +
+                    "You can pause me - or the whole mission - any time with the transport " +
+                    "button at the lower left.",
                     "Rick：你好，我是 Rick，今天的 AI 讲解助手。我们今天循序渐进地了解引力、" +
                     "引力波，以及爱因斯坦望远镜如何探测它们。你现在在一艘科研飞船里，" +
-                    "就在两个即将合并的黑洞附近。",
+                    "就在两个即将合并的黑洞附近。左下角的播放键可以随时暂停我的讲解，" +
+                    "或者暂停整个任务。",
                     "Rick: Hoi, ik ben Rick - je AI-gids voor de les van vandaag over " +
                     "zwaartekracht, zwaartekrachtgolven en hoe de Einstein Telescope ze meet. " +
-                    "Je zit in ons onderzoeksschip, vlak bij twee zwarte gaten die gaan samensmelten.");
+                    "Je zit in ons onderzoeksschip, vlak bij twee zwarte gaten die gaan samensmelten. " +
+                    "Met de knop linksonder pauzeer je mij - of de hele missie - op elk moment.");
             while (subtitles != null && subtitles.Busy) yield return null;
 
             Narrate("Rick: First: gravity. Imagine a stretched bedsheet with a heavy ball " +
@@ -171,13 +175,16 @@ namespace Project8.Story
             Narrate("Rick: When heavy objects accelerate - like these two black holes " +
                     "orbiting and colliding - they send tiny ripples through spacetime. " +
                     "Those ripples are gravitational waves. You can call me any time by " +
-                    "tapping the RICK face at the lower right.",
+                    "tapping the RICK face at the lower right - or just ask out loud " +
+                    "with the microphone button in my chat.",
                     "Rick：当很重的天体加速运动时——比如这两个黑洞互相绕转并合并——它们会把" +
-                    "细微的涟漪传遍时空，这就是引力波。想随时问我问题，就点右下角 RICK 的头像。",
+                    "细微的涟漪传遍时空，这就是引力波。想随时问我问题，就点右下角 RICK 的头像，" +
+                    "也可以点开对话框里的话筒，直接说话提问。",
                     "Rick: Als zware objecten versnellen - zoals deze zwarte gaten die om " +
                     "elkaar draaien en botsen - sturen ze kleine rimpelingen door de " +
                     "ruimtetijd. Dat zijn zwaartekrachtgolven. Je kunt me altijd iets " +
-                    "vragen door rechtsonder op Rick te tikken.");
+                    "vragen via het Rick-gezicht rechtsonder - of stel je vraag hardop " +
+                    "via de microfoonknop in mijn chat.");
             yield return StartCoroutine(SpotlightAfterNarration("rick-avatar", 4f));
 
             Narrate("Rick: Ahead of us - seen side-on - the pair is about to crash. " +
@@ -196,9 +203,11 @@ namespace Project8.Story
         }
 
         /// <summary>Light a control only AFTER its narration has fully played.
-        /// Optionally run a callback when the user can safely interact.</summary>
+        /// Optionally run a callback when the user can safely interact. `alsoId`
+        /// lights a second control alongside the primary one (e.g. the CONTROLS
+        /// rail button while the narration talks about the panel).</summary>
         internal Coroutine PromptAfterNarration(string id, float holdSeconds,
-            System.Action onReady = null)
+            System.Action onReady = null, string alsoId = null)
         {
             if (!Application.isPlaying)
             {
@@ -207,15 +216,16 @@ namespace Project8.Story
             }
             if (_promptRoutine != null) StopCoroutine(_promptRoutine);
             _promptRoutine = StartCoroutine(
-                SpotlightAfterNarration(id, holdSeconds, onReady));
+                SpotlightAfterNarration(id, holdSeconds, onReady, alsoId));
             return _promptRoutine;
         }
 
         System.Collections.IEnumerator SpotlightAfterNarration(string id, float holdSeconds,
-            System.Action onReady = null)
+            System.Action onReady = null, string alsoId = null)
         {
             while (subtitles != null && subtitles.Busy) yield return null;
             UiSpotlightTarget.Show(id);
+            if (!string.IsNullOrEmpty(alsoId)) UiSpotlightTarget.ShowAdditional(alsoId);
             onReady?.Invoke();
             if (holdSeconds > 0f)
             {
@@ -243,6 +253,7 @@ namespace Project8.Story
         public void StartMission()
         {
             _preview = false;
+            if (subtitles != null) subtitles.ResetTransport();
             if (!_poseCaptured) CaptureInitialPose();
             ship.SetPositionAndRotation(_initialShipPos, _initialShipRot);
             _rideOffset = ship.position - AxisPoint(SOf(ship.position));
@@ -339,6 +350,7 @@ namespace Project8.Story
         internal void OnTourFinished()
         {
             _phase = Phase.Done;
+            if (cockpit != null) cockpit.ResetLookTilt();
             Narrate("Rick: That is the whole detector - laser, splitter, arms, mirrors " +
                     "and the flicker that betrays a passing wave. Wander around the lab " +
                     "as long as you like, or press RESTART MISSION to fly the story again.",
@@ -363,6 +375,7 @@ namespace Project8.Story
             _preview = false;
             _phase = Phase.Waiting;
             _canStartMission = false;
+            if (subtitles != null) subtitles.ResetTransport();
             ship.SetPositionAndRotation(_initialShipPos, _initialShipRot);
             _rideOffset = ship.position - AxisPoint(SOf(ship.position));
             simulation.RestartAt(0f, false);
@@ -457,19 +470,52 @@ namespace Project8.Story
         }
 
         /// <summary>The single Play/Pause action: at the parked start it begins
-        /// the mission (simulation + story together); afterwards it pauses and
-        /// resumes the same clock without restarting anything.</summary>
+        /// the mission; afterwards it is a MASTER pause - narration (voice +
+        /// page clock) and the simulation clock freeze and resume together,
+        /// even in the gaps between spoken lines when nothing is on air.</summary>
         public void TogglePlayback()
         {
-            if (_phase == Phase.Waiting)
-            {
-                if (!_preview && _canStartMission) StartMission();
-                return;
-            }
             // Mid-descent everything stays frozen - the transport button must not
             // thaw the wave or Earth while the ship sinks into the crust.
             if (_phase == Phase.Diving || _phase == Phase.EnteringLab) return;
-            simulation.TogglePlayPause();
+
+            if (_phase == Phase.Waiting)
+            {
+                // Priority while parked: a held narration resumes first, a live
+                // narration pauses, a parked wave preview toggles its own clock,
+                // and only an idle start actually begins the mission. The old
+                // ordering left the button dead during a Waiting preview.
+                if (subtitles != null && subtitles.Paused)
+                {
+                    subtitles.TogglePause();
+                    return;
+                }
+                if (subtitles != null && subtitles.Busy)
+                {
+                    subtitles.TogglePause();
+                    return;
+                }
+                if (_preview)
+                {
+                    simulation.TogglePlayPause();
+                    return;
+                }
+                if (_canStartMission)
+                {
+                    StartMission();
+                    return;
+                }
+                return;
+            }
+
+            // Master pause: freeze the narration presenter and the simulation
+            // clock as one unit. The sim only pauses/resumes in step with the
+            // narration pause flag, so a paused wave can never thaw silently
+            // in the lab where the transport must leave the earth settled.
+            if (subtitles != null) subtitles.TogglePause();
+            bool narrPaused = subtitles != null && subtitles.Paused;
+            if (narrPaused != !simulation.IsPlaying)
+                simulation.TogglePlayPause();
         }
 
         void Update()
@@ -521,25 +567,9 @@ namespace Project8.Story
                     if (SlideTo(earth.position + earthWatchOffset))
                     {
                         _phase = Phase.EarthPause;
-                        Narrate("Rick: Parked side-on - the whole planet is in view. " +
-                                "Play with the CONTROLS panel if you like: change the " +
-                                "amplitude, frequency or exaggeration and watch the " +
-                                "wave through Earth respond. Press CONTINUE and we dive " +
-                                "underground to see how the detector feels it.",
-                                "Rick：已停在侧面观察位，地球全貌可见。可以先玩一下「控制台」：" +
-                                "调调振幅、频率或夸张度，看穿过地球的波怎么变化。玩好点「继续」，" +
-                                "我们潜入地下看探测器是怎么感觉到它的。",
-                                "Rick: Geparkeerd opzij - de hele planeet is zichtbaar. " +
-                                "Speel gerust met het BESTURING-paneel: verander " +
-                                "amplitude, frequentie of overdrijving en kijk hoe de " +
-                                "golf door de Aarde reageert. Druk op DOORGAAN en we " +
-                                "duiken ondergronds om te zien hoe de detector hem voelt.");
                         SetButtons(false, true, false);
                         if (continueButton != null) continueButton.interactable = false;
-                        PromptAfterNarration("continue", 0f, () =>
-                        {
-                            if (continueButton != null) continueButton.interactable = true;
-                        });
+                        StartCoroutine(EarthPauseIntro());
                     }
                     break;
                 }
@@ -547,6 +577,41 @@ namespace Project8.Story
                 // Diving / EnteringLab: the lab's descent coroutine owns the ship.
                 // InLab: free flight + the guided tour; no further choreography.
             }
+        }
+
+        /// <summary>EarthPause intro in two beats: the CONTROLS rail lights the
+        /// moment Rick STARTS talking about the panel - not after the whole
+        /// invitation has played - then CONTINUE joins the glow and unlocks
+        /// once the invitation is complete.</summary>
+        System.Collections.IEnumerator EarthPauseIntro()
+        {
+            Narrate("Rick: Parked side-on - the whole planet is in view.",
+                    "Rick：已停在侧面观察位，地球全貌可见。",
+                    "Rick: Geparkeerd opzij - de hele planeet is zichtbaar.");
+            while (subtitles != null && subtitles.Busy) yield return null;
+            if (_phase != Phase.EarthPause) yield break;
+
+            // Ring appears WITH the sentence about the panel, and stays lit for
+            // the whole time Rick explains it.
+            UiSpotlightTarget.Show("controls");
+            Narrate("Rick: Play with the CONTROLS panel if you like: change the " +
+                    "amplitude, frequency or exaggeration and watch the wave " +
+                    "through Earth respond. Press CONTINUE and we dive " +
+                    "underground to see how the detector feels it.",
+                    "Rick：可以先玩一下「控制台」：调调振幅、频率或夸张度，看穿过地球的波" +
+                    "怎么变化。玩好点「继续」，我们潜入地下看探测器是怎么感觉到它的。",
+                    "Rick: Speel gerust met het BESTURING-paneel: verander amplitude, " +
+                    "frequentie of overdrijving en kijk hoe de golf door de Aarde " +
+                    "reageert. Druk op DOORGAAN en we duiken ondergronds om te zien " +
+                    "hoe de detector hem voelt.");
+            while (subtitles != null && subtitles.Busy) yield return null;
+            if (_phase != Phase.EarthPause) yield break;
+
+            // The invitation is complete: CONTINUE joins the glow and unlocks.
+            UiSpotlightTarget.ShowAdditional("continue");
+            if (continueButton != null) continueButton.interactable = true;
+            yield return new WaitForSecondsRealtime(6f);
+            UiSpotlightTarget.Clear();
         }
 
         /// <summary>Pure lateral translation along the wave axis, a fixed distance

@@ -56,6 +56,11 @@ namespace Project8.Interaction
         Behaviour[] _poseDrivers;
         GameObject _deviceSim;
         Coroutine _guidedLookRoutine;
+        Coroutine _levelLookRoutine;
+        /// <summary>Accumulated downward tilt the guided tour applied to the XR
+        /// rig (degrees). The cockpit hull stays level - only the user's view
+        /// pitches - and <see cref="ResetLookTilt"/> eases it back to zero.</summary>
+        float _guidedPitch;
 
         void Start()
         {
@@ -119,6 +124,9 @@ namespace Project8.Interaction
         public void ShowMission() => SetDrawer(_drawer == Drawer.Secondary ? Drawer.None : Drawer.Secondary);
         public void OpenMission() => SetDrawer(Drawer.Secondary);
         public void ShowControls() => SetDrawer(_drawer == Drawer.Controls ? Drawer.None : Drawer.Controls);
+        /// <summary>Non-toggling open used by guided tasks (prediction) that
+        /// must bring the drawer up without risking closing an open one.</summary>
+        public void OpenControls() => SetDrawer(Drawer.Controls);
         public void ClosePanels() => SetDrawer(Drawer.None);
         public void GoToStory() => UnityEngine.SceneManagement.SceneManager.LoadScene("Main");
 
@@ -137,6 +145,13 @@ namespace Project8.Interaction
         public void GuideLookAt(Vector3 worldTarget, Vector3? vantage)
         {
             if (seatedCamera == null) return;
+            // A fresh aim keeps whatever tilt is already applied - the level
+            // routine would fight the new guidance, so it is stopped first.
+            if (_levelLookRoutine != null)
+            {
+                StopCoroutine(_levelLookRoutine);
+                _levelLookRoutine = null;
+            }
             if (_guidedLookRoutine != null) StopCoroutine(_guidedLookRoutine);
             _guidedLookRoutine = StartCoroutine(GuideLookRoutine(worldTarget, vantage));
         }
@@ -178,10 +193,43 @@ namespace Project8.Interaction
                         worldTarget - seatedCamera.transform.position);
                     if (local.z > 0.01f)
                     {
-                        float pitch = Mathf.Atan2(local.y, local.z) * Mathf.Rad2Deg;
+                        // _pitch convention: NEGATIVE = look up (mouse-look
+                        // subtracts delta.y). A target below the eye (local.y
+                        // < 0) must therefore produce a POSITIVE pitch - the
+                        // negated y is what tilts the view DOWN onto parts.
+                        float pitch = Mathf.Atan2(-local.y, local.z) * Mathf.Rad2Deg;
                         _pitch = Mathf.MoveTowards(_pitch,
                             Mathf.Clamp(pitch, -60f, 70f), 90f * dt);
                         seatedCamera.transform.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+                    }
+                }
+                else if (xrRigRoot != null)
+                {
+                    // XR: the tracked head cannot be pitched directly, so tilt
+                    // the RIG around the eye until the user's real view drops
+                    // onto the part. The hull and every panel stay level; only
+                    // the tracked space (camera + controllers) tilts.
+                    Vector3 eye = seatedCamera.transform.position;
+                    Vector3 headFwd = seatedCamera.transform.forward;
+                    Vector3 dir = (worldTarget - eye).normalized;
+                    float headPitch = Mathf.Asin(Mathf.Clamp(headFwd.y, -1f, 1f)) *
+                        Mathf.Rad2Deg;
+                    float flatLen = new Vector3(dir.x, 0f, dir.z).magnitude;
+                    float wantPitch = Mathf.Atan2(dir.y, flatLen) * Mathf.Rad2Deg;
+                    float dPitch = Mathf.Clamp(wantPitch - headPitch,
+                        -120f * dt, 120f * dt);
+                    if (Mathf.Abs(dPitch) > 0.01f)
+                    {
+                        // Axis = the camera's horizontal RIGHT: a positive
+                        // rotation about it pitches the view downward.
+                        Vector3 axis = Vector3.Cross(Vector3.up, headFwd);
+                        axis.y = 0f;
+                        if (axis.sqrMagnitude > 0.001f)
+                        {
+                            axis.Normalize();
+                            xrRigRoot.RotateAround(eye, axis, -dPitch);
+                            _guidedPitch -= dPitch; // applied rig tilt, +=down
+                        }
                     }
                 }
 
@@ -328,6 +376,39 @@ namespace Project8.Interaction
             if (_guidedLookRoutine == null) return;
             StopCoroutine(_guidedLookRoutine);
             _guidedLookRoutine = null;
+            // The user took over - level the rig again so their own view is
+            // not left tilted by a half-finished guided look.
+            ResetLookTilt();
+        }
+
+        /// <summary>Ease the XR rig back to an untilted view. Called when the
+        /// tour ends, resets or the user grabs manual control mid-guidance.</summary>
+        public void ResetLookTilt()
+        {
+            if (Mathf.Abs(_guidedPitch) < 0.01f) { _guidedPitch = 0f; return; }
+            if (_levelLookRoutine == null)
+                _levelLookRoutine = StartCoroutine(LevelLookRoutine());
+        }
+
+        System.Collections.IEnumerator LevelLookRoutine()
+        {
+            while (Mathf.Abs(_guidedPitch) > 0.05f && xrRigRoot != null &&
+                   seatedCamera != null)
+            {
+                float step = Mathf.Clamp(_guidedPitch,
+                    -120f * Time.unscaledDeltaTime, 120f * Time.unscaledDeltaTime);
+                Vector3 eye = seatedCamera.transform.position;
+                Vector3 headFwd = seatedCamera.transform.forward;
+                Vector3 axis = Vector3.Cross(Vector3.up, headFwd);
+                axis.y = 0f;
+                if (axis.sqrMagnitude < 0.001f) break;
+                axis.Normalize();
+                xrRigRoot.RotateAround(eye, axis, -step);
+                _guidedPitch -= step;
+                yield return null;
+            }
+            _guidedPitch = 0f;
+            _levelLookRoutine = null;
         }
 
         static Vector2 ReadStick(UnityEngine.InputSystem.XR.XRController controller)

@@ -524,12 +524,19 @@ namespace Project8.EditorTools
                 "Choose your language before entering the story.", 19, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.8f, 0.9f, 1f),
                 new Vector2(0f, 130f), new Vector2(880f, 100f));
-            MakeButton(rt, "Btn_English", "English", new Vector2(-300f, 15f), 230f, settings.ChooseEnglish);
+            var english = MakeButton(rt, "Btn_English", "English", new Vector2(-300f, 15f), 230f,
+                settings.ChooseEnglish);
+            settings.englishButton = english.transform.parent.GetComponent<Button>();
             var chinese = MakeButton(rt, "Btn_Chinese", "中文", new Vector2(0f, 15f), 230f,
                 settings.ChooseChinese);
             settings.chineseButtonText = chinese;
-            MakeButton(rt, "Btn_Dutch", "Nederlands", new Vector2(300f, 15f), 230f,
+            settings.chineseButton = chinese.transform.parent.GetComponent<Button>();
+            var dutch = MakeButton(rt, "Btn_Dutch", "Nederlands", new Vector2(300f, 15f), 230f,
                 settings.ChooseDutch);
+            settings.dutchButton = dutch.transform.parent.GetComponent<Button>();
+            // Language picks get NO spotlight ring - the full-face accent
+            // recolour in ExperienceSettings is the whole selected look.
+            // Every other button keeps its spotlight wiring untouched.
             settings.selectionText = MakeText(rt, "Selection", "", 18, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.82f, 0.45f),
                 new Vector2(0f, -95f), new Vector2(900f, 50f));
@@ -725,7 +732,7 @@ namespace Project8.EditorTools
                 parameters, perspective, task, tutor, voice, et, story);
             cockpit.controlPanel = panel.gameObject;
             cockpit.secondaryPanel = BuildMissionHelp(ship.transform, eyeWorld, cockpit);
-            BuildPlaybackDock(ship.transform, eyeWorld, controller, story);
+            BuildPlaybackDock(ship.transform, eyeWorld, controller, story, subtitles);
             cockpit.compactPanel = BuildCompactPanel(ship.transform, cockpit, eyeWorld);
             BuildRickAvatar(ship.transform, eyeWorld, tutor, voice, subtitles);
             task.et = et;
@@ -1515,8 +1522,7 @@ namespace Project8.EditorTools
                 case "Pause": return "暂停";
                 case "Replay": return "重播";
                 case "Reset": return "重置";
-                case "Ride with the wave": return "跟随引力波";
-                case "Predict next station": return "预测下一测站";
+                case "PREDICT NEXT STATION": return "预测下一测站";
                 case "ASK RICK": return "提问 RICK";
                 case "strain amplitude h0": return "应变振幅 h0";
                 case "frequency f (Hz)": return "频率 f（赫兹）";
@@ -1527,11 +1533,16 @@ namespace Project8.EditorTools
                 case "MISSION & HELP": return "任务与帮助";
                 case "WAVE SHAPE": return "波形参数";
                 case "SAVED WAVES": return "已存波形";
-                case "REPLAY CURRENT WAVE": return "重播当前波";
+                case "PREDICT WAVE": return "预测波形";
                 case "RESET": return "重置";
                 case "CONFIRM OVERWRITE": return "确认覆盖";
                 case "CANCEL": return "取消";
                 case "DETAIL ON/OFF": return "细节 开/关";
+                case "PREDICTION TASK": return "预测任务";
+                case "freezes the wave mid-flight - answer with D1 / D2 / D3 above":
+                    return "把波冻结在半路——用上方 D1 / D2 / D3 作答";
+                case "physics hint: the station nearest the merger registers the front first":
+                    return "物理提示：离并合点最近的测站最先测到波前";
                 case "MISSION TOOLS": return "任务工具";
                 case "RICK · A2": return "RICK · A2";
                 case "Save wave": return "保存波形";
@@ -1578,8 +1589,7 @@ namespace Project8.EditorTools
                 case "Pause": return "Pauze";
                 case "Replay": return "Opnieuw";
                 case "Reset": return "Resetten";
-                case "Ride with the wave": return "Surfen op de golf";
-                case "Predict next station": return "Voorspel volgend station";
+                case "PREDICT NEXT STATION": return "Voorspel volgend station";
                 case "ASK RICK": return "VRAAG AAN RICK";
                 case "strain amplitude h0": return "rek-amplitude h0";
                 case "frequency f (Hz)": return "frequentie f (Hz)";
@@ -1590,11 +1600,16 @@ namespace Project8.EditorTools
                 case "MISSION & HELP": return "MISSIE & HELP";
                 case "WAVE SHAPE": return "GOLFVORM";
                 case "SAVED WAVES": return "OPGESLAGEN GOLVEN";
-                case "REPLAY CURRENT WAVE": return "HUIDIGE GOLF OPNIEUW";
+                case "PREDICT WAVE": return "VOORSPEL GOLF";
                 case "RESET": return "RESET";
                 case "CONFIRM OVERWRITE": return "OVERSCHRIJVEN";
                 case "CANCEL": return "ANNULEREN";
                 case "DETAIL ON/OFF": return "DETAIL AAN/UIT";
+                case "PREDICTION TASK": return "VOORSPEL-TAAK";
+                case "freezes the wave mid-flight - answer with D1 / D2 / D3 above":
+                    return "bevriest de golf - antwoord met D1 / D2 / D3 hierboven";
+                case "physics hint: the station nearest the merger registers the front first":
+                    return "natuurkundige hint: het station dichtst bij de samensmelting voelt het front eerst";
                 case "MISSION TOOLS": return "MISSIE-TOOLS";
                 case "Save wave": return "Golf opslaan";
                 case "Replay wave": return "Golf afspelen";
@@ -1698,7 +1713,7 @@ namespace Project8.EditorTools
             textRt.offsetMax = new Vector2(-12f, -4f);
             var text = textRt.gameObject.AddComponent<Text>();
             text.font = _font;
-            text.fontSize = 15;
+            text.fontSize = 18;
             text.color = Color.white;
             text.alignment = TextAnchor.MiddleLeft;
             text.supportRichText = false;
@@ -1711,9 +1726,9 @@ namespace Project8.EditorTools
             phRt.offsetMax = new Vector2(-12f, -4f);
             var ph = phRt.gameObject.AddComponent<Text>();
             ph.font = _font;
-            ph.fontSize = 15;
+            ph.fontSize = 18;
             ph.fontStyle = FontStyle.Italic;
-            ph.color = new Color(0.6f, 0.62f, 0.7f, 0.7f);
+            ph.color = new Color(0.62f, 0.66f, 0.75f, 0.85f);
             ph.alignment = TextAnchor.MiddleLeft;
             ph.text = hint;
             field.placeholder = ph;

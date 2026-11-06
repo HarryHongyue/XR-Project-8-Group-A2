@@ -17,27 +17,33 @@ namespace Project8.UI
     {
         public SimulationController simulation;
         public StoryDirector story;
+        public RickSubtitles subtitles;
         public Text label;
-        public Text timeText;
 
         void Update()
         {
             if (simulation == null) return;
-            bool playing = simulation.IsPlaying;
-            // The dock shows START only in the actual parked Waiting state -
-            // never during a wave preview sitting at the same phase.
-            bool dockStart = story != null && story.MissionWaiting && !story.InPreview;
+            if (subtitles == null)
+                subtitles = FindAnyObjectByType<RickSubtitles>();
+            // The button is the MASTER pause: "PAUSE" while the sim clock OR
+            // the narration is live, "PLAY" once the transport froze either.
+            bool narrPaused = subtitles != null && subtitles.Paused;
+            bool narrLive = subtitles != null && subtitles.Busy && !narrPaused;
+            bool live = simulation.IsPlaying || narrLive;
+            // START appears ONLY once the parked intro has fully played and the
+            // mission can actually begin - while the welcome line is live or
+            // paused the button is a transport control, not a start button.
+            bool dockStart = story != null && story.MissionWaiting &&
+                !story.InPreview && !narrLive && !narrPaused;
             if (label != null)
                 label.text = dockStart
                     ? (ExperienceSettings.IsChinese ? "开始" :
                        ExperienceSettings.IsDutch ? "START" : "START")
-                    : playing
+                    : live
                         ? (ExperienceSettings.IsChinese ? "暂停" :
                            ExperienceSettings.IsDutch ? "PAUZE" : "PAUSE")
                         : (ExperienceSettings.IsChinese ? "播放" :
                            ExperienceSettings.IsDutch ? "AFSPELEN" : "PLAY");
-            if (timeText != null)
-                timeText.text = $"t = {simulation.SimulationTime:F1} s";
         }
 
         /// <summary>Button handler: one transport action, mission-aware.</summary>

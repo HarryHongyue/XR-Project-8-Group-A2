@@ -45,6 +45,14 @@ namespace Project8.UI
         readonly Queue<string> _pendingStory = new Queue<string>();
         readonly Queue<QueuedAnswer> _pendingAnswers = new Queue<QueuedAnswer>();
         bool _showingAnswer;
+        /// <summary>Set every frame by TutorChatUI while the user is composing,
+        /// dictating or waiting for a reply - the story stays frozen until the
+        /// AI exchange drains.</summary>
+        public bool aiInteracting;
+        bool _aiSuspended;
+        /// <summary>Manual pause (transport button): freezes page dwell and
+        /// silences the voice; resume re-reads the interrupted sentence.</summary>
+        public bool Paused { get; private set; }
         /// <summary>Answers displayed with no voiceText (the "thinking"
         /// placeholder, system hints) render silently - only pages carrying a
         /// real utterance are spoken.</summary>
@@ -73,8 +81,11 @@ namespace Project8.UI
             _cjk = ExperienceSettings.IsChinese;
             ApplyFont();
             MissionLogUI.Add("Rick", narration);
-            if (HasActiveUtterance() || _pendingStory.Count > 0 ||
-                _pendingAnswers.Count > 0)
+            // While an AI exchange holds the floor, EVERY story line queues -
+            // the script never starts speaking over the user's question. The
+            // same holds while the transport pause is down.
+            if (Paused || _aiSuspended || HasActiveUtterance() ||
+                _pendingStory.Count > 0 || _pendingAnswers.Count > 0)
             {
                 _pendingStory.Enqueue(narration);
                 return;
@@ -109,7 +120,7 @@ namespace Project8.UI
             if (display.IndexOf("thinking", System.StringComparison.OrdinalIgnoreCase) < 0 &&
                 !display.Contains("思考中") && !display.Contains("denken"))
                 MissionLogUI.Add("Rick", display);
-            if (HasActiveUtterance() || _pendingStory.Count > 0 ||
+            if (Paused || HasActiveUtterance() || _pendingStory.Count > 0 ||
                 _pendingAnswers.Count > 0)
             {
                 _pendingAnswers.Enqueue(new QueuedAnswer(display, voiceText));
@@ -155,20 +166,109 @@ namespace Project8.UI
         {
             var pages = _showingAnswer ? _answer : _story;
             int index = _showingAnswer ? _answerIndex : _storyIndex;
-            return index < pages.Count || (voice != null && voice.IsSpeaking);
+            // A suspended story page is not "on air": an incoming AI answer
+            // starts immediately instead of waiting behind frozen pages.
+            bool storyHeld = _aiSuspended && !_showingAnswer;
+            return (!storyHeld && index < pages.Count) ||
+                   (voice != null && voice.IsSpeaking);
+        }
+
+        /// <summary>Transport play/pause: the master freeze - voice, page
+        /// clock and any queued lines all hold until the flag lifts. It must
+        /// engage even between spoken lines (Busy false) or the button feels
+        /// dead during narration gaps.</summary>
+        public void TogglePause()
+        {
+            Paused = !Paused;
+            if (Paused)
+            {
+                if (voice != null) voice.CancelUtterance();
+                return;
+            }
+            _pageStart = -1f;
+            // Resuming straight into an active AI exchange would speak one
+            // story line before Update() suspends it - hold it instead.
+            if (aiInteracting)
+            {
+                _aiSuspended = true;
+                return;
+            }
+            RenderCurrent(); // re-speak the held page / pull the next queue
+        }
+
+        /// <summary>Mission (re)start hard reset: drop the pause flag, every
+        /// held page and every queued line so the fresh intro is the ONLY
+        /// thing heard. Without this a restart pressed while paused would
+        /// bury the new welcome line in a queue that can never drain.</summary>
+        public void ResetTransport()
+        {
+            Paused = false;
+            _aiSuspended = false;
+            _showingAnswer = false;
+            _story.Clear(); _storyIndex = 0;
+            _answer.Clear(); _answerIndex = 0; _answerHasVoice = false;
+            _pendingStory.Clear(); _pendingAnswers.Clear();
+            _pageStart = -1f;
+            if (voice != null) voice.CancelUtterance();
+            if (text != null) text.text = "";
         }
 
         void Update()
         {
+            if (Paused) return;
+
+            // Hand the floor back to the scripted story only once the whole AI
+            // exchange has drained: no listening, no pending answer, no speech.
+            if (_aiSuspended && !aiInteracting && !_showingAnswer &&
+                _pendingAnswers.Count == 0 &&
+                (voice == null || !voice.IsSpeaking))
+            {
+                _aiSuspended = false;
+                _pageStart = -1f;
+                RenderCurrent(); // resume the held story page / next queued line
+                return;
+            }
+            if (aiInteracting && !_aiSuspended)
+            {
+                _aiSuspended = true;
+                _pageStart = -1f;
+                if (voice != null) voice.CancelUtterance();
+            }
+
             var pages = _showingAnswer ? _answer : _story;
             int idx = _showingAnswer ? _answerIndex : _storyIndex;
             if (idx >= pages.Count)
             {
+                // While suspended only ANSWER-side items may start - story
+                // lines in the queue keep waiting for the AI turn to end.
+                if (_aiSuspended)
+                {
+                    if (_showingAnswer && _answerIndex >= _answer.Count &&
+                        _pendingAnswers.Count == 0 &&
+                        (voice == null || !voice.IsSpeaking))
+                    {
+                        // The AI turn is over: close the answer so the resume
+                        // branch above can hand the floor back to the held
+                        // story on the next frame (only RenderCurrent cleared
+                        // this flag before - unreachable while suspended).
+                        _showingAnswer = false;
+                        _answer.Clear();
+                        _answerIndex = 0;
+                        _answerHasVoice = false;
+                        _pageStart = -1f;
+                        return;
+                    }
+                    if (_pendingAnswers.Count > 0 &&
+                        (voice == null || !voice.IsSpeaking))
+                        RenderCurrent();
+                    return;
+                }
                 if ((voice == null || !voice.IsSpeaking) &&
                     (_pendingStory.Count > 0 || _pendingAnswers.Count > 0))
                     RenderCurrent();
                 return;
             }
+            if (_aiSuspended && !_showingAnswer) return; // story page held
             if (_pageStart < 0f) return;
             // Hold the page while its line is still being spoken.
             if (voice != null && voice.IsSpeaking) return;
@@ -197,7 +297,8 @@ namespace Project8.UI
                 text.text = pages[idx];
                 // Speak the visible page; Update waits for this clip before
                 // advancing, so the next subtitle cannot overtake the audio.
-                if (voice != null && (!_showingAnswer || _answerHasVoice))
+                if (voice != null && (!_showingAnswer || _answerHasVoice) &&
+                    !(_aiSuspended && !_showingAnswer))
                     voice.Speak(pages[idx]);
                 return;
             }
@@ -216,7 +317,9 @@ namespace Project8.UI
                 BeginAnswer(next.display, next.voiceText);
                 return;
             }
-            if (_pendingStory.Count > 0)
+            // A suspended AI turn owns the panel: queued story lines wait even
+            // if a resume path (e.g. TogglePause) reaches this dequeue point.
+            if (_pendingStory.Count > 0 && !_aiSuspended)
             {
                 BeginNarration(_pendingStory.Dequeue());
                 return;

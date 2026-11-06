@@ -26,7 +26,6 @@ namespace Project8.UI
         public Text amplitudeValueText;
         public Text frequencyValueText;
         public Text playPauseButtonText;
-        public Text perspectiveButtonText;
         public Button replayButton;
         public Button resetButton;
         public Slider amplitudeSlider;
@@ -68,7 +67,6 @@ namespace Project8.UI
         public void OnSpeedQuarter() => simulation.SetSpeedQuarter();
         public void OnSpeedHalf() => simulation.SetSpeedHalf();
         public void OnSpeedNormal() => simulation.SetSpeedNormal();
-        public void OnTogglePerspective() => perspective.TogglePerspective();
 
         // --- Slider handlers (bound dynamically by the scene builder) --------
         public void SetAmplitude(float v)
@@ -144,10 +142,6 @@ namespace Project8.UI
             RefreshInteractables();
             bool chinese = ExperienceSettings.IsChinese;
             bool dutch = ExperienceSettings.IsDutch;
-            if (perspectiveButtonText != null)
-                perspectiveButtonText.text = perspective.Mode == PerspectiveMode.Observer
-                    ? (chinese ? "跟随引力波" : dutch ? "Surfen op de golf" : "Ride with the wave")
-                    : (chinese ? "返回观察位置" : dutch ? "Terug naar waarnemer" : "Return to observer");
             if (statusText != null)
             {
                 if (chinese) LocalizedText.UseChineseFont(statusText);

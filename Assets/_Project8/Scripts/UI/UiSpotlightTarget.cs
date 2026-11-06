@@ -47,6 +47,14 @@ namespace Project8.UI
             if (TryFind(id, out var t)) t.SetLit(true);
         }
 
+        /// <summary>Light one MORE target without darkening what is already lit
+        /// - e.g. the CONTROLS rail button glowing next to CONTINUE.</summary>
+        public static void ShowAdditional(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            if (TryFind(id, out var t)) t.SetLit(true);
+        }
+
         /// <summary>Light/darken every registered id starting with prefix
         /// (e.g. "station-" lights D1/D2/D3 together for a pick-one prompt).</summary>
         public static void SetGroup(string idPrefix, bool on)

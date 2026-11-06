@@ -109,6 +109,14 @@ namespace Project8.EditorTools
             var canvas = go.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1;
+            // ConstantPixelSize scaler: on a world-space canvas it only raises
+            // canvas.scaleFactor, i.e. the pixel density text glyphs rasterize
+            // at - without it every label rasterizes undersampled and reads as
+            // a blurred double-strike in the cockpit. Layout is untouched.
+            var scaler = go.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            scaler.scaleFactor = 2.5f;
+            scaler.referencePixelsPerUnit = 100f;
             if (interactive)
             {
                 go.AddComponent<GraphicRaycaster>();
@@ -162,21 +170,20 @@ namespace Project8.EditorTools
         /// <summary>Persistent Play/Pause dock lower-left - outside every drawer,
         /// always reachable. Delegates to StoryDirector.TogglePlayback.</summary>
         static void BuildPlaybackDock(Transform ship, Vector3 eye,
-            SimulationController sim, StoryDirector story)
+            SimulationController sim, StoryDirector story,
+            RickSubtitles subtitles = null)
         {
-            var rt = MakeWorldCanvas(ship, "GlobalPlayback", new Vector2(260f, 84f),
-                new Vector3(-0.80f, 0.92f, 1.20f), 0.0013f, eye, interactive: true);
-            PanelHitArea(rt);
-            GlassBG(rt, GlassRole.Panel, GlassPanelTint);
+            var rt = MakeWorldCanvas(ship, "GlobalPlayback", new Vector2(260f, 64f),
+                new Vector3(-0.94f, 0.92f, 1.20f), 0.0013f, eye, interactive: true);
+            // No backing plate: the button's own glass face is the whole dock -
+            // an extra panel behind it only read as dead weight.
             var dock = rt.gameObject.AddComponent<PlaybackDock>();
             dock.simulation = sim;
             dock.story = story;
+            dock.subtitles = subtitles;
             dock.label = MakeButton(rt, "Btn_PlayPause", "PLAY",
-                new Vector2(0f, 14f), 220f, dock.OnPlayPause);
+                new Vector2(0f, 0f), 220f, dock.OnPlayPause);
             rt.gameObject.AddComponent<UiSpotlightTarget>().id = "play";
-            dock.timeText = MakeText(rt, "Time", "t = 0.0 s", 15, FontStyle.Normal,
-                TextAnchor.MiddleCenter, InkSecondary, new Vector2(0f, -28f),
-                new Vector2(230f, 24f));
         }
 
         // -------------------------------------------------- mission actions --
@@ -185,23 +192,24 @@ namespace Project8.EditorTools
         static void BuildMissionActionDock(Transform ship, Vector3 eye, StoryDirector story)
         {
             var rt = MakeWorldCanvas(ship, "MissionActionDock", new Vector2(260f, 72f),
-                new Vector3(-0.80f, 1.12f, 1.20f), 0.0013f, eye, interactive: true);
-            PanelHitArea(rt);
-            GlassBG(rt, GlassRole.Panel, GlassPanelTint);
+                new Vector3(-0.94f, 1.12f, 1.20f), 0.0013f, eye, interactive: true);
+            // Bare contextual buttons - no backing plate behind them.
             // All three contextual actions share one rect - only the one the
             // mission phase needs is ever active, so nothing can overlap.
+            // 220 px matches the rail and playback dock exactly - the earlier
+            // 240 px action row stuck out past every sibling button.
             story.startButton = Btn(rt, "Btn_Start", "START MISSION",
-                Vector2.zero, 240f, story.StartMission);
+                Vector2.zero, 220f, story.StartMission);
             story.continueButton = Btn(rt, "Btn_Continue", "CONTINUE",
-                Vector2.zero, 240f, story.ContinueMission);
+                Vector2.zero, 220f, story.ContinueMission);
             story.restartButton = Btn(rt, "Btn_Restart", "RESTART MISSION",
-                Vector2.zero, 240f, story.RestartMission);
+                Vector2.zero, 220f, story.RestartMission);
             story.continueButton.gameObject.SetActive(false);
             story.restartButton.gameObject.SetActive(false);
             // Lab-tour NEXT lives on the same dock - the guided tour no longer
             // needs its own floating mini panel to advance.
             story.nextButton = Btn(rt, "Btn_Next", "NEXT",
-                Vector2.zero, 240f, story.Advance);
+                Vector2.zero, 220f, story.Advance);
             story.nextButton.gameObject.SetActive(false);
             story.nextButton.gameObject.AddComponent<UiSpotlightTarget>().id = "lab-next";
             story.startButton.gameObject.AddComponent<UiSpotlightTarget>().id = "start";
@@ -217,7 +225,7 @@ namespace Project8.EditorTools
             CockpitControls cockpit)
         {
             var rt = MakeWorldCanvas(ship, "MissionPanel", new Vector2(1120f, 1080f),
-                new Vector3(0.12f, 1.60f, 1.45f), 0.001f, eye, interactive: true);
+                new Vector3(0.12f, 1.35f, 1.45f), 0.001f, eye, interactive: true);
             PanelHitArea(rt);
             GlassBG(rt, GlassRole.Panel, GlassPanelTint);
             MakeText(rt, "Title", "MISSION & HELP", 28, FontStyle.Bold,
@@ -230,10 +238,11 @@ namespace Project8.EditorTools
                 "- START / CONTINUE / RESTART live on the mission dock (left rail); " +
                 "the lower-left dock always pauses and plays.\n" +
                 "- CONTROLS drawer - WAVE LAB tab: shape the wave (amplitude, " +
-                "frequency, exaggeration), save it into four slots, replay it at " +
-                "the point you are observing.\n" +
-                "- ET tab: select station D1/D2/D3, toggle its optical detail and " +
-                "read the LF/HF channel readout.\n" +
+                "frequency, exaggeration), save it into four slots; PREDICT WAVE " +
+                "previews your settings at the point you are observing.\n" +
+                "- ET tab: select station D1/D2/D3, toggle its optical detail, " +
+                "read the LF/HF channel readout, and run PREDICT NEXT STATION - " +
+                "the wave freezes and you answer with D1/D2/D3.\n" +
                 "- Desktop Enter advances the story; VR input is unchanged.\n\n" +
                 "WHAT IS REAL / WHAT IS SIMPLIFIED\n" +
                 "- Waves are emitted at merger and travel outward causally at a " +
@@ -261,8 +270,9 @@ namespace Project8.EditorTools
             loc.chinese =
                 "如何操作\n" +
                 "- 开始/继续/重新开始任务在左侧任务坞上；左下角常驻坞随时播放/暂停。\n" +
-                "- 「控制台」抽屉——波形实验页：调节波形（振幅、频率、夸张度），存入四个槽位，在当前观察点回放。\n" +
-                "- ET 页：选择测站 D1/D2/D3，开关其光路细节，查看 LF/HF 通道读数。\n" +
+                "- 「控制台」抽屉——波形实验页：调节波形（振幅、频率、夸张度），存入四个槽位，「预测波形」在当前观察点播放你的参数效果。\n" +
+                "- ET 页：选择测站 D1/D2/D3，开关其光路细节，查看 LF/HF 通道读数；" +
+                "「预测下一测站」会把波冻结在半路，用 D1/D2/D3 作答。\n" +
                 "- 桌面端回车键推进剧情；VR 输入不变。\n\n" +
                 "哪些是真实的，哪些是简化的\n" +
                 "- 波在并合时刻产生并因果地向外传播——因果性是真的，速度不是（真实引力波以光速传播）。\n" +
@@ -278,10 +288,11 @@ namespace Project8.EditorTools
                 "- START / DOORGAAN / HERSTARTEN staan op het missiedok (linker rail); " +
                 "het linkerdok onder pauzeert en speelt altijd.\n" +
                 "- CONTROLS-lade - tabblad WAVE LAB: vorm de golf (amplitude, " +
-                "frequentie, overdrijving), sla hem op in vier slots en speel hem " +
-                "af op het punt dat je bekijkt.\n" +
-                "- ET-tab: kies station D1/D2/D3, schakel het optische detail om " +
-                "en lees de LF/HF-kanalen.\n" +
+                "frequentie, overdrijving), sla hem op in vier slots; VOORSPEL " +
+                "GOLF toont je instellingen op het punt dat je bekijkt.\n" +
+                "- ET-tab: kies station D1/D2/D3, schakel het optische detail " +
+                "om, lees de LF/HF-kanalen, en gebruik VOORSPEL VOLGEND " +
+                "STATION - de golf bevriest en je antwoordt met D1/D2/D3.\n" +
                 "- Enter op desktop schakelt het verhaal verder; VR-invoer is ongewijzigd.\n\n" +
                 "WAT IS ECHT / WAT IS VEREENVOUDIGD\n" +
                 "- Golven ontstaan bij de samensmelting en planten zich causaal " +
@@ -313,17 +324,16 @@ namespace Project8.EditorTools
         static GameObject BuildCompactPanel(Transform ship, CockpitControls cockpit,
             Vector3 eye)
         {
-            var rt = MakeWorldCanvas(ship, "MenuRail", new Vector2(260f, 150f),
-                new Vector3(-0.80f, 1.60f, 1.20f), 0.00115f, eye, interactive: true);
-            PanelHitArea(rt);
-            GlassBG(rt, GlassRole.Panel, GlassPanelTint);
-            MakeText(rt, "RailTitle", "RICK · A2", 17, FontStyle.Bold,
-                TextAnchor.MiddleCenter, Accent, new Vector2(0f, 52f),
-                new Vector2(240f, 26f));
+            var rt = MakeWorldCanvas(ship, "MenuRail", new Vector2(260f, 110f),
+                new Vector3(-0.94f, 1.60f, 1.20f), 0.00115f, eye, interactive: true);
+            // Bare rail: just the two drawer buttons on their own glass -
+            // the decorative "RICK · A2" title chip meant nothing to users.
             MakeButton(rt, "Btn_Secondary", "MISSION & HELP",
-                new Vector2(0f, 8f), 220f, cockpit.ShowMission);
-            MakeButton(rt, "Btn_Controls", "CONTROLS",
-                new Vector2(0f, -48f), 220f, cockpit.ShowControls);
+                new Vector2(0f, 22f), 220f, cockpit.ShowMission);
+            var controlsText = MakeButton(rt, "Btn_Controls", "CONTROLS",
+                new Vector2(0f, -34f), 220f, cockpit.ShowControls);
+            controlsText.transform.parent.gameObject
+                .AddComponent<UiSpotlightTarget>().id = "controls";
             return rt.gameObject;
         }
 
@@ -339,7 +349,7 @@ namespace Project8.EditorTools
             // (panel spans ship-local x in [-0.44, 0.68]): park the canvas far
             // right so no edge of any child can slide under the panel.
             var rt = MakeWorldCanvas(ship, "RickAvatar", new Vector2(480f, 260f),
-                new Vector3(1.15f, 1.02f, 1.20f), 0.0011f, eye, interactive: true);
+                new Vector3(1.09f, 1.02f, 1.20f), 0.0011f, eye, interactive: true);
             // No root hit-area here: the composer opens/closes, so a full-size
             // blocker would swallow mouse-look rays across an invisible 480x260
             // region. Only the open composer window and the avatar chip (itself
@@ -359,9 +369,10 @@ namespace Project8.EditorTools
             chat.voiceInput = vi;
 
             var window = NewUIObject("ChatWindow", rt);
-            // Keep the question composer below-left of the avatar; the persistent
-            // history board is stacked above it and must never overlap.
-            window.anchoredPosition = new Vector2(-280f, -170f);
+            // Keep the question composer below-left of the (now bigger) avatar;
+            // the persistent history board is stacked above it and must never
+            // overlap. Right edge ends 10 px left of the chip's left edge.
+            window.anchoredPosition = new Vector2(-300f, -190f);
             window.sizeDelta = new Vector2(460f, 160f);
             PanelHitArea(window);
             GlassBG(window, GlassRole.Panel, GlassPanelTint);
@@ -383,8 +394,8 @@ namespace Project8.EditorTools
             // Round avatar chip, always visible, with its own runtime-drawn
             // face sprite so the scene never depends on an unsaved editor texture.
             var avatar = NewUIObject("Avatar", rt);
-            avatar.anchoredPosition = new Vector2(0f, -80f);
-            avatar.sizeDelta = new Vector2(80f, 80f);
+            avatar.anchoredPosition = new Vector2(0f, -70f);
+            avatar.sizeDelta = new Vector2(120f, 120f);
             var avGlass = avatar.gameObject.AddComponent<LiquidGlassGraphic>();
             avGlass.material = GlassMat(GlassRole.Button);
             avGlass.color = new Color(0.20f, 0.40f, 0.58f, 0.62f);
@@ -437,7 +448,7 @@ namespace Project8.EditorTools
             lib.story = story;
 
             var rt = MakeWorldCanvas(ship, "ControlPanel", new Vector2(1120f, 1080f),
-                new Vector3(0.12f, 1.60f, 1.45f), 0.001f, eye, interactive: true);
+                new Vector3(0.12f, 1.35f, 1.45f), 0.001f, eye, interactive: true);
             PanelHitArea(rt);
             GlassBG(rt, GlassRole.Panel, GlassPanelTint);
 
@@ -507,7 +518,7 @@ namespace Project8.EditorTools
                 FontStyle.Normal, TextAnchor.MiddleCenter, InkFaint,
                 new Vector2(-140f, 138f), new Vector2(600f, 28f));
 
-            // ---- saved waves: four independent slot cards (2x2) --------------
+            // ---- saved waves: four compact slot cards in ONE row -------------
             MakeText(wavePage, "SecSlots", "SAVED WAVES", 20, FontStyle.Bold,
                 TextAnchor.MiddleLeft, Accent, new Vector2(-30f, 90f),
                 new Vector2(500f, 30f));
@@ -515,11 +526,10 @@ namespace Project8.EditorTools
             lib.slotTexts = new Text[WaveLibrary.SlotCount];
             for (int i = 0; i < WaveLibrary.SlotCount; i++)
             {
-                Vector2 cardPos = new Vector2(
-                    i % 2 == 0 ? -242f : 242f, i < 2 ? 20f : -84f);
+                Vector2 cardPos = new Vector2(-357f + i * 238f, 14f);
                 var card = NewUIObject("Card_Wave" + i, wavePage);
                 card.anchoredPosition = cardPos;
-                card.sizeDelta = new Vector2(460f, 88f);
+                card.sizeDelta = new Vector2(205f, 60f);
                 var cardGlass = card.gameObject.AddComponent<LiquidGlassGraphic>();
                 cardGlass.material = GlassMat(GlassRole.Button);
                 cardGlass.color = GlassCardTint;
@@ -534,7 +544,7 @@ namespace Project8.EditorTools
                 int slot = i;
                 UnityEventTools.AddIntPersistentListener(
                     cardBtn.onClick, lib.SelectSlot, slot);
-                var cardText = MakeText(card, "Label", $"Wave {i + 1}\n(empty)", 19,
+                var cardText = MakeText(card, "Label", $"Wave {i + 1}\n(empty)", 14,
                     FontStyle.Normal, TextAnchor.MiddleCenter, InkPrimary,
                     Vector2.zero, card.sizeDelta);
                 Stretch((RectTransform)cardText.transform);
@@ -547,58 +557,61 @@ namespace Project8.EditorTools
             // Save/Load and Confirm/Cancel share the SAME two positions - the
             // library activates exactly one pair depending on PendingOverwrite.
             var saveT = MakeButton(wavePage, "Btn_Save", "Save to 1",
-                new Vector2(-140f, -176f), 240f, lib.SaveSelected);
+                new Vector2(-140f, -62f), 240f, lib.SaveSelected);
             lib.saveButton = saveT.transform.parent.GetComponent<Button>();
             lib.saveButtonText = saveT;
             var loadT = MakeButton(wavePage, "Btn_Load", "Load 1",
-                new Vector2(140f, -176f), 240f, lib.LoadSelected);
+                new Vector2(140f, -62f), 240f, lib.LoadSelected);
             lib.loadButton = loadT.transform.parent.GetComponent<Button>();
             lib.loadButtonText = loadT;
             lib.confirmButton = Btn(wavePage, "Btn_Confirm", "CONFIRM OVERWRITE",
-                new Vector2(-140f, -176f), 240f, lib.ConfirmOverwrite);
+                new Vector2(-140f, -62f), 240f, lib.ConfirmOverwrite);
             lib.cancelButton = Btn(wavePage, "Btn_Cancel", "CANCEL",
-                new Vector2(140f, -176f), 240f, lib.CancelOverwrite);
+                new Vector2(140f, -62f), 240f, lib.CancelOverwrite);
             lib.confirmButton.gameObject.SetActive(false);
             lib.cancelButton.gameObject.SetActive(false);
             lib.hintText = MakeText(wavePage, "SlotHint", "", 16, FontStyle.Italic,
-                TextAnchor.MiddleCenter, InkFaint, new Vector2(0f, -220f),
+                TextAnchor.MiddleCenter, InkFaint, new Vector2(0f, -108f),
                 new Vector2(900f, 34f));
 
-            // ---- one transport row (exact non-overlapping spans) -------------
-            ui.replayButton = Btn(wavePage, "Btn_Replay", "REPLAY CURRENT WAVE",
-                new Vector2(-340f, -282f), 280f, ui.OnReplay);
+            // ---- action row under the slots: RESET (left) | PREDICT WAVE -----
+            // "Predict wave" = play the wave with the CURRENT slider values -
+            // the learner predicts what their parameter choices will look like,
+            // then watches the preview. Distinct from the station prediction.
             ui.resetButton = Btn(wavePage, "Btn_Reset", "RESET",
-                new Vector2(-100f, -282f), 140f, ui.OnReset);
-            Btn(wavePage, "Btn_SpeedQ", ".25x", new Vector2(60f, -282f), 100f,
-                ui.OnSpeedQuarter);
-            Btn(wavePage, "Btn_SpeedHalf", ".5x", new Vector2(190f, -282f), 100f,
-                ui.OnSpeedHalf);
-            Btn(wavePage, "Btn_Speed1", "1x", new Vector2(320f, -282f), 100f,
-                ui.OnSpeedNormal);
+                new Vector2(-170f, -160f), 300f, ui.OnReset);
+            ui.replayButton = Btn(wavePage, "Btn_Replay", "PREDICT WAVE",
+                new Vector2(170f, -160f), 300f, ui.OnReplay);
 
-            // ---- mission tools ------------------------------------------------
-            ui.perspectiveButtonText = MakeButton(wavePage, "Btn_Ride",
-                "Ride with the wave", new Vector2(-140f, -355f), 260f,
-                ui.OnTogglePerspective);
-            var predictBtn = MakeButton(wavePage, "Btn_Predict", "Predict next station",
-                new Vector2(140f, -355f), 240f, task.BeginPrediction);
-            predictBtn.transform.parent.gameObject
-                .AddComponent<UiSpotlightTarget>().id = "predict";
+            // ---- speed row below it: playback rates only (the station
+            // prediction moved to the ET page where its answer keys live) ----
+            Btn(wavePage, "Btn_SpeedQ", ".25x", new Vector2(-280f, -220f), 160f,
+                ui.OnSpeedQuarter);
+            Btn(wavePage, "Btn_SpeedHalf", ".5x", new Vector2(0f, -220f), 160f,
+                ui.OnSpeedHalf);
+            Btn(wavePage, "Btn_Speed1", "1x", new Vector2(280f, -220f), 160f,
+                ui.OnSpeedNormal);
 
             ui.statusText = MakeText(wavePage, "Status", "", 18, FontStyle.Normal,
                 TextAnchor.MiddleCenter, new Color(0.65f, 0.9f, 0.7f),
-                new Vector2(0f, -458f), new Vector2(1000f, 36f));
+                new Vector2(0f, -300f), new Vector2(1000f, 36f));
             MakeText(wavePage, "Legend",
                 "orange = stretch   |   blue = squeeze   |   the ring spreads outward from the merger",
                 16, FontStyle.Normal, TextAnchor.MiddleCenter, InkFaint,
-                new Vector2(0f, -500f), new Vector2(1000f, 30f));
+                new Vector2(0f, -342f), new Vector2(1000f, 30f));
 
             // =====================  ET PAGE  ==================================
+            // The page used to sit half-empty - station pickers, readout and
+            // the (relocated) prediction task now fill it at a larger scale.
             et.stationButtons = new Button[3];
             for (int i = 0; i < 3; i++)
             {
                 et.stationButtons[i] = Btn(etPage, $"Btn_D{i + 1}", $"D{i + 1}",
-                    new Vector2(-224f + i * 224f, 300f), 200f, null);
+                    new Vector2(-320f + i * 320f, 335f), 280f, null);
+                var dRt = (RectTransform)et.stationButtons[i].transform;
+                dRt.sizeDelta = new Vector2(280f, 68f);
+                var dLabel = et.stationButtons[i].GetComponentInChildren<Text>();
+                if (dLabel != null) dLabel.fontSize = 26;
                 UnityEventTools.AddIntPersistentListener(
                     et.stationButtons[i].onClick, et.SelectDetector, i);
                 // During a prediction round the same buttons are the answer keys.
@@ -607,25 +620,46 @@ namespace Project8.EditorTools
                 et.stationButtons[i].gameObject.AddComponent<UiSpotlightTarget>()
                     .id = $"station-{i + 1}";
             }
-            Btn(etPage, "Btn_Detail", "DETAIL ON/OFF",
-                new Vector2(0f, 220f), 240f, et.ToggleDetail);
-            et.statusText = MakeText(etPage, "ETStatus", "", 18, FontStyle.Normal,
-                TextAnchor.MiddleCenter, InkSecondary, new Vector2(0f, 168f),
-                new Vector2(640f, 36f));
+            var detailBtn = Btn(etPage, "Btn_Detail", "DETAIL ON/OFF",
+                new Vector2(0f, 252f), 320f, et.ToggleDetail);
+            ((RectTransform)detailBtn.transform).sizeDelta = new Vector2(320f, 56f);
+            et.statusText = MakeText(etPage, "ETStatus", "", 20, FontStyle.Normal,
+                TextAnchor.MiddleCenter, InkSecondary, new Vector2(0f, 205f),
+                new Vector2(760f, 40f));
 
             var readout = NewUIObject("ETReadout", etPage);
-            readout.anchoredPosition = new Vector2(0f, 100f);
-            readout.sizeDelta = new Vector2(900f, 90f);
+            readout.anchoredPosition = new Vector2(0f, 122f);
+            readout.sizeDelta = new Vector2(980f, 110f);
             GlassBG(readout, GlassRole.Inset, GlassInsetTint);
             et.inspectorText = MakeText(readout, "Text",
                 "D1  LF  phase --   signal --\n      HF  phase --   signal --",
-                22, FontStyle.Normal, TextAnchor.MiddleCenter, InkPrimary,
-                Vector2.zero, new Vector2(880f, 80f));
+                26, FontStyle.Normal, TextAnchor.MiddleCenter, InkPrimary,
+                Vector2.zero, new Vector2(960f, 100f));
             MakeText(etPage, "ETCaption",
                 "3 stations - 60-degree arms - nested LF/HF pair per station - " +
                 "12 m shown stands in for ~10 km real arms",
-                16, FontStyle.Normal, TextAnchor.MiddleCenter, InkFaint,
-                new Vector2(0f, 30f), new Vector2(1000f, 30f));
+                18, FontStyle.Normal, TextAnchor.MiddleCenter, InkFaint,
+                new Vector2(0f, 56f), new Vector2(1000f, 32f));
+
+            // ---- prediction task: lives HERE, next to its D1/D2/D3 keys ----
+            MakeText(etPage, "SecPredict", "PREDICTION TASK", 20, FontStyle.Bold,
+                TextAnchor.MiddleCenter, Accent, new Vector2(0f, -8f),
+                new Vector2(500f, 32f));
+            var predictBtn = MakeButton(etPage, "Btn_Predict", "PREDICT NEXT STATION",
+                new Vector2(0f, -85f), 460f, task.BeginPrediction);
+            ((RectTransform)predictBtn.transform.parent).sizeDelta =
+                new Vector2(460f, 68f);
+            predictBtn.fontSize = 22;
+            predictBtn.transform.parent.gameObject
+                .AddComponent<UiSpotlightTarget>().id = "predict";
+            MakeText(etPage, "PredictHint",
+                "freezes the wave mid-flight - answer with D1 / D2 / D3 above", 17,
+                FontStyle.Italic, TextAnchor.MiddleCenter, InkFaint,
+                new Vector2(0f, -140f), new Vector2(900f, 32f));
+            MakeText(etPage, "PredictHint2",
+                "physics hint: the station nearest the merger registers the front first",
+                17, FontStyle.Italic, TextAnchor.MiddleCenter, InkFaint,
+                new Vector2(0f, -185f), new Vector2(900f, 32f));
 
             // Initial state for edit-mode inspection and screenshots alike.
             wavePage.gameObject.SetActive(true);

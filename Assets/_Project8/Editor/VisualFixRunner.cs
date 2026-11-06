@@ -37,10 +37,17 @@ namespace Project8.EditorTools
         static string ProjectRoot => Directory.GetParent(Application.dataPath).FullName;
         static string RequestPath => Path.Combine(ProjectRoot, ".tools", "et-ui-redesign-request.json");
         static string BuildRequestPath => Path.Combine(ProjectRoot, ".tools", "build-request.json");
+        static string RegressionRequestPath => Path.Combine(ProjectRoot, ".tools", "regression-request.json");
         /// <summary>Bumped whenever the verified code revision changes, so a
         /// fresh result cannot be confused with an older run.</summary>
-        const string ResultRevision = "et-ui-redesign-2";
+        const string ResultRevision = "et-ui-redesign-3";
         static double _nextPoll;
+        /// <summary>One-shot "settle" cycle: Refresh() only QUEUES a script
+        /// compile - isCompiling does not flip until a later editor tick, so a
+        /// flag consumed in the same tick would execute the pre-edit assembly.
+        /// When a flag exists we always spend one extra poll cycle after the
+        /// refresh before consuming.</summary>
+        static bool _refreshedForFlag;
 
         [InitializeOnLoadMethod]
         static void Hook()
@@ -54,7 +61,28 @@ namespace Project8.EditorTools
             _nextPoll = EditorApplication.timeSinceStartup + 1.5;
             if (EditorApplication.isCompiling || EditorApplication.isUpdating ||
                 EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+            bool flagPending = File.Exists(BuildRequestPath) ||
+                               File.Exists(RegressionRequestPath) ||
+                               File.Exists(RequestPath);
+            if (!flagPending) { _refreshedForFlag = false; return; }
+
+            // Pick up externally-edited scripts BEFORE honoring any flag:
+            // without this a flag dropped alongside a source change executes
+            // against the stale assembly (Auto Refresh may be off).
+            AssetDatabase.Refresh();
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            { _refreshedForFlag = false; return; }
+
+            // A compile queued by the Refresh above only STARTS on a later
+            // tick; skip this cycle once so isCompiling gets its chance to
+            // flip. Next poll either sees the compile (and waits for the
+            // domain reload) or confirms nothing changed and consumes.
+            if (!_refreshedForFlag) { _refreshedForFlag = true; return; }
+            _refreshedForFlag = false;
+
             if (File.Exists(BuildRequestPath)) { ConsumeBuild(); return; }
+            if (File.Exists(RegressionRequestPath)) { ConsumeRegression(); return; }
             if (!File.Exists(RequestPath)) return;
 
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
@@ -98,6 +126,35 @@ namespace Project8.EditorTools
                 error.Replace("\"", "'") + "\",\"consumedFlag\":\"" +
                 consumed.Replace("\\", "\\\\") + "\"}");
             Debug.Log($"[Project8] Build request finished: {status} {error}");
+        }
+
+        /// <summary>Regression-only flag: run PhysicsVisualRegression inside the
+        /// already-open editor WITHOUT rebuilding scenes - the verify pass for
+        /// code-only changes that must not touch Main.unity/Welcome.unity.
+        /// Result lands in Logs/regression_result.json.</summary>
+        static void ConsumeRegression()
+        {
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            string consumed = RegressionRequestPath + ".consumed-" + stamp;
+            try { File.Move(RegressionRequestPath, consumed); }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Project8] RegressionRunner could not consume flag: {e.Message}");
+                return;
+            }
+            string status = "success", error = "";
+            try
+            {
+                Debug.Log("[Project8] Regression request consumed - running checks ...");
+                PhysicsVisualRegression.RunBatch();
+            }
+            catch (Exception e) { status = "failure"; error = e.Message; Debug.LogException(e); }
+            File.WriteAllText(Path.Combine(ProjectRoot, "Logs", "regression_result.json"),
+                "{\"status\":\"" + status + "\",\"finishedUtc\":\"" +
+                DateTime.UtcNow.ToString("o") + "\",\"error\":\"" +
+                error.Replace("\"", "'").Replace("\n", " ").Replace("\r", " ") +
+                "\",\"consumedFlag\":\"" + consumed.Replace("\\", "\\\\") + "\"}");
+            Debug.Log($"[Project8] Regression request finished: {status} {error}");
         }
 
         static void Execute(string consumedFlag, string stamp)

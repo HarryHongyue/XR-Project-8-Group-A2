@@ -51,13 +51,51 @@ namespace Project8.UI
             _source.playOnAwake = false;
         }
 
+        /// <summary>Hard-stop the current utterance on every platform (the caller
+        /// re-issues the page on resume). Bumping _job also invalidates any
+        /// in-flight wav render or pending Android text, so a cancelled clip
+        /// can never start playing late.</summary>
+        public void CancelUtterance()
+        {
+            _job++;
+            _renderingJob = 0;
+            if (_source != null && _source.isPlaying) _source.Stop();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            _pendingAndroidText = null;
+            _androidSpeaking = false;
+            _androidSpeechGuardUntil = 0f;
+            if (_tts != null)
+            {
+                try { _tts.Call("stop"); }
+                catch (System.Exception) { }
+            }
+#endif
+        }
+
         /// <summary>Speak the given text in the selected language, replacing current speech.</summary>
         public void Speak(string text)
         {
             if (muted || string.IsNullOrWhiteSpace(text)) return;
+            // Strip a leading SPEAKER TAG only ("Rick:"/"Rick：") - and only
+            // when the head is pure ASCII letters. The old "any colon before
+            // index 12" rule beheaded every Chinese sentence containing a
+            // mid-sentence ：("奥妙来了：…" lost its first words), which became
+            // audible on EVERY page once narration split into per-sentence
+            // pages. Colons inside real sentences must survive.
             int colon = text.IndexOf(':');
             if (colon < 0) colon = text.IndexOf('：');
-            string spoken = colon >= 0 && colon < 12 ? text.Substring(colon + 1).Trim() : text;
+            string spoken = text;
+            if (colon > 0 && colon < 12)
+            {
+                bool asciiName = true;
+                for (int i = 0; i < colon; i++)
+                {
+                    char ch = text[i];
+                    if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == ' '))
+                    { asciiName = false; break; }
+                }
+                if (asciiName) spoken = text.Substring(colon + 1).Trim();
+            }
 #if UNITY_ANDROID && !UNITY_EDITOR
             SpeakAndroid(spoken);
             return;
@@ -267,8 +305,15 @@ namespace Project8.UI
                 maleVoiceSelection +
                 "$s.Rate = " + rate + "; $s.Volume = " + volume + "; " +
                 "$s.SetOutputToWaveFile('" + wav.Replace("'", "''") + "'); " +
-                "$s.Speak([IO.File]::ReadAllText('" + txt.Replace("'", "''") +
-                "', [Text.Encoding]::UTF8)); $s.Dispose()";
+                // A 180 ms silence at the head of every clip: each sentence is
+                // its own wav+Play() now, and the audio output's spin-up after
+                // idle was eating the first syllable of every sentence. Let it
+                // eat the leading pause instead.
+                "$pb = New-Object System.Speech.Synthesis.PromptBuilder; " +
+                "$pb.AppendBreak([TimeSpan]::FromMilliseconds(180)); " +
+                "$pb.AppendText([IO.File]::ReadAllText('" + txt.Replace("'", "''") +
+                "', [Text.Encoding]::UTF8)); " +
+                "$s.Speak($pb); $s.Dispose()";
 
             bool done = false;
             System.Threading.Tasks.Task.Run(() =>

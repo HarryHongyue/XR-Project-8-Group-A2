@@ -39,7 +39,7 @@ namespace Project8.UI
         static readonly Color RickColor = new Color(0.45f, 0.85f, 1f);
         static readonly Color YouColor = new Color(1f, 0.8f, 0.45f);
         static readonly Color SysColor = new Color(0.65f, 0.9f, 0.65f);
-        static readonly Color BodyColor = new Color(0.92f, 0.95f, 1f, 0.95f);
+        static readonly Color BodyColor = new Color(0.95f, 0.98f, 1f, 1f);
 
         /// <summary>Create the whole panel under `host` (the ship) at a fixed
         /// upper-right cockpit position. Called once by the lab bootstrap.</summary>
@@ -53,11 +53,12 @@ namespace Project8.UI
             var rt = (RectTransform)go.transform;
             if (anchoredToAvatar)
             {
-                // Avatar is an 80 px chip on the 0.0011-scale world canvas parked
-                // far right of the control panel. Stack the history above Rick,
-                // right edges aligned, and keep its left edge clear of the
-                // panel's right edge (~0.68 m ship-local) at all times.
-                rt.localPosition = new Vector3(-170f, 350f, -1f);
+                // Avatar is a 120 px chip on the 0.0011-scale world canvas parked
+                // far right of the control panel. Stack the history above Rick:
+                // right edge stays put, the left edge pulls inward (narrower)
+                // and the frame grows taller - a slim column reads better than
+                // a wide block beside the panel.
+                rt.localPosition = new Vector3(-130f, 420f, -1f);
                 rt.localRotation = Quaternion.identity;
                 rt.localScale = Vector3.one;
             }
@@ -68,7 +69,7 @@ namespace Project8.UI
                 rt.localRotation = Quaternion.Euler(6f, -30f, 0f);
                 rt.localScale = Vector3.one * 0.00105f;
             }
-            rt.sizeDelta = new Vector2(460f, 520f);
+            rt.sizeDelta = new Vector2(380f, 660f);
 
             var ui = go.AddComponent<MissionLogUI>();
             var canvas = go.AddComponent<Canvas>();
@@ -105,7 +106,7 @@ namespace Project8.UI
             inner.rectTransform.offsetMin = new Vector2(3f, 3f);
             inner.rectTransform.offsetMax = new Vector2(-3f, -3f);
 
-            _titleText = AddText(root, "Title", "", 15, FontStyle.Bold,
+            _titleText = AddText(root, "Title", "", 18, FontStyle.Bold,
                 TextAnchor.MiddleLeft, TitleColor);
             var trt = _titleText.rectTransform;
             trt.anchorMin = new Vector2(0f, 1f);
@@ -142,7 +143,7 @@ namespace Project8.UI
             vlg.childForceExpandHeight = false;
             vlg.childControlWidth = true;
             vlg.childControlHeight = true;
-            vlg.spacing = 6f;
+            vlg.spacing = 8f;
             vlg.padding = new RectOffset(4, 4, 4, 4);
             var fitter = _content.gameObject.AddComponent<ContentSizeFitter>();
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -251,7 +252,7 @@ namespace Project8.UI
             var entry = NewRect(_content, "Entry");
             var t = entry.gameObject.AddComponent<Text>();
             t.font = _font;
-            t.fontSize = 14;
+            t.fontSize = 19;
             t.alignment = TextAnchor.UpperLeft;
             t.horizontalOverflow = HorizontalWrapMode.Wrap;
             t.verticalOverflow = VerticalWrapMode.Overflow;

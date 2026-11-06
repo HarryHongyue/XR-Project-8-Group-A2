@@ -202,18 +202,34 @@ namespace Project8.AI
 
         IEnumerator Transcribe(AudioClip clip)
         {
-            var form = new WWWForm();
-            form.AddBinaryData("file", WavUtility.FromAudioClip(clip), "speech.wav", "audio/wav");
-            form.AddField("model", Model);
-            form.AddField("response_format", "json");
-            // Hint the UI language; the server also auto-detects mixed zh/en.
-            form.AddField("language", ExperienceSettings.IsChinese ? "zh"
-                : ExperienceSettings.IsDutch ? "nl" : "en");
-            var req = UnityWebRequest.Post(Endpoint, form);
-            string key = EnvVar(whisperApiKeyEnvironmentVariable);
-            if (!string.IsNullOrEmpty(key))
-                req.SetRequestHeader("Authorization", "Bearer " + key);
-            req.timeout = 30;
+            UnityWebRequest req;
+            try
+            {
+                var form = new WWWForm();
+                form.AddBinaryData("file", WavUtility.FromAudioClip(clip),
+                    "speech.wav", "audio/wav");
+                form.AddField("model", Model);
+                form.AddField("response_format", "json");
+                // Hint the UI language; the server also auto-detects mixed zh/en.
+                form.AddField("language", ExperienceSettings.IsChinese ? "zh"
+                    : ExperienceSettings.IsDutch ? "nl" : "en");
+                req = UnityWebRequest.Post(Endpoint, form);
+                string key = EnvVar(whisperApiKeyEnvironmentVariable);
+                if (!string.IsNullOrEmpty(key))
+                    req.SetRequestHeader("Authorization", "Bearer " + key);
+                req.timeout = 30;
+            }
+            catch (System.Exception e)
+            {
+                // An exception before the first yield would otherwise kill the
+                // coroutine with Busy stuck true - freezing the story forever.
+                Busy = false;
+                WakeResume();
+                Debug.LogWarning("[Project8] Whisper request setup failed: " + e.Message);
+                Hint(ExperienceSettings.IsChinese ? "语音识别请求出错。"
+                    : "Speech request failed.");
+                yield break;
+            }
             yield return req.SendWebRequest();
             Busy = false;
             WakeResume();
@@ -233,8 +249,16 @@ namespace Project8.AI
                         : $"Speech service error (HTTP {code})."));
                 yield break;
             }
-            var parsed = JsonUtility.FromJson<Transcription>(req.downloadHandler.text);
-            string text = parsed != null ? parsed.text : null;
+            string text = null;
+            try
+            {
+                var parsed = JsonUtility.FromJson<Transcription>(req.downloadHandler.text);
+                text = parsed != null ? parsed.text : null;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[Project8] Whisper JSON parse failed: " + e.Message);
+            }
             if (string.IsNullOrWhiteSpace(text))
             {
                 Hint(ExperienceSettings.IsChinese ? "没有听清，请再说一次。"
@@ -278,14 +302,14 @@ namespace Project8.AI
 #endif
 
         /// <summary>One entry point for every captured question - identical to
-        /// typing it into the chat box, so the answer/voice path is shared.</summary>
+        /// typing it into the chat box, so the answer/voice path is shared.
+        /// The question itself is logged by AITutor ("You:") - do NOT also
+        /// echo it through ShowAnswer, or the log gains a bogus "Rick: You:"
+        /// line and the subtitle slot fills with an extra silent page.</summary>
         void AskQuestion(string question)
         {
             Busy = false;
             WakeResume();
-            if (subtitles != null)
-                subtitles.ShowAnswer(
-                    (ExperienceSettings.IsChinese ? "你：" : "You: ") + question);
             if (tutor != null) tutor.Ask(question);
             if (chat != null)
                 chat.SetAnswer(ExperienceSettings.IsChinese ? "Rick：思考中……"

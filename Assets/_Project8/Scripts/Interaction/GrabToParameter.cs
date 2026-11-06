@@ -18,8 +18,36 @@ namespace Project8.Interaction
         public float metresToAmplitude = 1.5f;
 
         float _base;
+        bool _selfChange; // guard: our own write must not snap the handle home
 
-        void OnEnable() => _base = parameters != null ? parameters.strainAmplitude : 0.35f;
+        void Awake()
+        {
+            // A free rigidbody lets physics contacts drift the handle past the
+            // deadband; a kinematic body only moves when something (a grab)
+            // deliberately moves it.
+            var rb = GetComponent<Rigidbody>();
+            if (rb != null) rb.isKinematic = true;
+        }
+
+        void OnEnable()
+        {
+            _base = parameters != null ? parameters.strainAmplitude : 0.35f;
+            if (parameters != null) parameters.Changed += OnParametersChanged;
+        }
+
+        void OnDisable()
+        {
+            if (parameters != null) parameters.Changed -= OnParametersChanged;
+        }
+
+        /// <summary>An external write (UI slider, saved-wave load, restart) is
+        /// authoritative: park the handle back on its anchor so a stale grab
+        /// offset can never keep overwriting the parameter the UI just set.</summary>
+        void OnParametersChanged()
+        {
+            if (_selfChange) return;
+            ResetHandle();
+        }
 
         void Update()
         {
@@ -37,8 +65,10 @@ namespace Project8.Interaction
             float value = Mathf.Clamp01(_base + dy * metresToAmplitude);
             if (!Mathf.Approximately(value, parameters.strainAmplitude))
             {
+                _selfChange = true;
                 parameters.strainAmplitude = value;
                 parameters.NotifyChanged();
+                _selfChange = false;
             }
         }
 

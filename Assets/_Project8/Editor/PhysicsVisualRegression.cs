@@ -1023,18 +1023,19 @@ namespace Project8.EditorTools
                           !cockpit.secondaryPanel.activeSelf,
                         "Mission & Help + Controls are separate closed drawers");
 
-                    // PanelHitArea: blank glass must still catch pointer rays.
+                    // PanelHitArea: the two big DRAWER faces must catch pointer
+                    // rays on blank glass. The rail and the three docks run
+                    // bare by design - their buttons carry their own face.
                     int hitAreas = 0;
                     foreach (var panel in new[]
-                             { cockpit.controlPanel, cockpit.secondaryPanel,
-                               cockpit.compactPanel })
+                             { cockpit.controlPanel, cockpit.secondaryPanel })
                         if (panel != null &&
                             panel.GetComponentInChildren<Image>(true) != null)
                             foreach (var img in panel
                                          .GetComponentsInChildren<Image>(true))
                                 if (img.name == "PanelHitArea" && img.raycastTarget)
                                     hitAreas++;
-                    Check(hitAreas >= 3,
+                    Check(hitAreas >= 2,
                         "each drawer face carries a PanelHitArea ray blocker");
 
                     // Progressive disclosure: the console tabs live on the
@@ -1086,16 +1087,28 @@ namespace Project8.EditorTools
                             }
                             return true;
                         }
-                        Check(NoOverlap("Btn_Replay", "Btn_Reset", "Btn_SpeedQ",
-                                        "Btn_SpeedHalf", "Btn_Speed1"),
-                            "transport row buttons do not overlap");
+                        Check(NoOverlap("Btn_Reset", "Btn_Replay"),
+                            "bottom row RESET | PREDICT WAVE do not overlap");
+                        Check(NoOverlap("Btn_SpeedQ", "Btn_SpeedHalf",
+                                        "Btn_Speed1"),
+                            "speed row buttons do not overlap");
                         Check(NoOverlap("Btn_Save", "Btn_Load",
-                                        "Btn_Ride", "Btn_Predict",
                                         "Btn_TabWave", "Btn_TabET"),
-                            "slot actions / mission tools / tabs do not overlap");
+                            "slot actions / tabs do not overlap");
                         Check(NoOverlap("Card_Wave0", "Card_Wave1",
                                         "Card_Wave2", "Card_Wave3"),
                             "the four slot cards do not overlap");
+                        // ET page: the prediction button now lives beside its
+                        // D1/D2/D3 answer keys - measure it with the page up.
+                        if (tabs != null)
+                        {
+                            tabs.ShowET();
+                            Canvas.ForceUpdateCanvases();
+                            Check(NoOverlap("Btn_D1", "Btn_D2", "Btn_D3",
+                                            "Btn_Detail", "Btn_Predict"),
+                                "ET page: stations / detail / predict do not overlap");
+                            tabs.ShowWave();
+                        }
                         if (!drawerWasActive) cockpit.controlPanel.SetActive(false);
                     }
                 }
