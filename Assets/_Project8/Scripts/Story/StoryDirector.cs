@@ -134,7 +134,56 @@ namespace Project8.Story
             _canStartMission = false;
             SetButtons(true, false, false);
             if (startButton != null) startButton.interactable = false;
+            EnsureSkipButton();   // TEMP: global narration-skip test aid
             StartCoroutine(Intro());
+        }
+
+        // ------------------------------------------------------- TEMP SKIP --
+        /// <summary>TEMPORARY test aid - REMOVE BEFORE FINAL DELIVERY. A
+        /// permanent clone of the NEXT button docked one row lower; every
+        /// click force-skips the running narration segment in ANY phase -
+        /// voice stops, Busy-waits release, the mission flows on - and inside
+        /// the lab tour it also jumps straight to the next step.</summary>
+        GameObject _skipButton;
+
+        void EnsureSkipButton()
+        {
+            if (nextButton == null) return;
+            var src = nextButton.gameObject;
+            var go = Instantiate(src, src.transform.parent);
+            go.name = "Btn_SkipTemp";
+            ((RectTransform)go.transform).anchoredPosition += new Vector2(0f, -62f);
+            var btn = go.GetComponent<Button>();
+            btn.onClick = new Button.ButtonClickedEvent();
+            btn.onClick.AddListener(SkipCurrentNarration);
+            btn.interactable = true;
+            var label = go.GetComponentInChildren<Text>(true);
+            if (label != null)
+            {
+                label.text = "SKIP  ▶▶";
+                var localized = label.GetComponent<LocalizedText>();
+                if (localized != null)
+                {
+                    localized.english = "SKIP  ▶▶";
+                    localized.chinese = "跳过  ▶▶";
+                    localized.dutch = "SKIP  ▶▶";
+                }
+                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(label);
+            }
+            var spot = go.GetComponent<UiSpotlightTarget>();
+            if (spot != null) spot.id = "skip-temp";
+            go.SetActive(true);
+            _skipButton = go;
+        }
+
+        /// <summary>TEMPORARY: one click = drop the running narration and let
+        /// the mission continue immediately (test aid - remove with the
+        /// button before shipping).</summary>
+        public void SkipCurrentNarration()
+        {
+            if (subtitles != null) subtitles.ResetTransport();
+            if (_phase == Phase.InLab && lab != null) lab.SkipStep();
+            else if (_phase == Phase.EarthPause) ContinueMission();
         }
 
         /// <summary>Opening monologue: who Rick is, where the user is, what

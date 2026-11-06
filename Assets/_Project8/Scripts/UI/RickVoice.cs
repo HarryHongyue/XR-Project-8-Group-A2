@@ -301,6 +301,7 @@ namespace Project8.UI
             string dir = Application.temporaryCachePath;
             string txt = Path.Combine(dir, $"rick_{job}.txt");
             string wav = Path.Combine(dir, $"rick_{job}.wav");
+            string vname = Path.Combine(dir, $"rick_{job}.voice.txt");
             File.WriteAllText(txt, text);
 
             string iso = ExperienceSettings.IsChinese ? "zh"
@@ -312,11 +313,15 @@ namespace Project8.UI
             // desktop voices (this machine: two female voices). WinRT's
             // Windows.Media.SpeechSynthesis sees the OneCore set too, which
             // here includes Kangkang (zh-CN male) and Frank (nl-NL male).
-            // Try WinRT first; when no voice exists for the language (en on
-            // this PC) fall back to SAPI5 with a lowered prosody pitch.
+            // Priority: same-language male -> ANY male (user wants a male
+            // voice in every language; a zh male reading English beats an
+            // en female) -> same-language any gender. No <voice> element in
+            // the SSML: it would override $synth.Voice with the language
+            // default - the exact bug that kept playing the female voice.
             string script =
                 "$wav='" + wav.Replace("'", "''") + "'; " +
                 "$txt='" + txt.Replace("'", "''") + "'; " +
+                "$vname='" + vname.Replace("'", "''") + "'; " +
                 "$text=[IO.File]::ReadAllText($txt,[Text.Encoding]::UTF8); " +
                 "function W($o){while($o.Status -eq 'Started'){" +
                 "Start-Sleep -Milliseconds 10};$o.GetResults()}; " +
@@ -326,16 +331,19 @@ namespace Project8.UI
                 "$all=[Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices;" +
                 "$v=$all|Where-Object{$_.Language -like '" + iso +
                 "-*' -and $_.Gender -eq 'Male'}|Select-Object -First 1;" +
+                "if(-not $v){$v=$all|Where-Object{$_.Gender -eq 'Male'}|" +
+                "Select-Object -First 1};" +
                 "if(-not $v){$v=$all|Where-Object{$_.Language -like '" + iso +
                 "-*'}|Select-Object -First 1};" +
                 "if($v){$synth.Voice=$v;" +
+                "[IO.File]::WriteAllText($vname,$synth.Voice.DisplayName+'|'+$synth.Voice.Gender+'|'+$synth.Voice.Language);" +
                 "$synth.Options.SpeakingRate=" +
                 Mathf.Clamp(1f + rate * 0.1f, 0.5f, 2f)
                     .ToString(System.Globalization.CultureInfo.InvariantCulture) + ";" +
-                "$ssml='<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"" +
-                culture + "\"><voice xml:lang=\"" + culture +
-                "\"><break time=\"350ms\"/>'+[Security.SecurityElement]::Escape($text)+'</voice></speak>';" +
-                "$st=W($synth.SynthesizeSsmlToStreamAsync($ssml));" +
+                "$ssml='<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"'+$v.Language+'\">" +
+                "<break time=\"350ms\"/>'+[Security.SecurityElement]::Escape($text)+'</speak>';" +
+                "try{$st=W($synth.SynthesizeSsmlToStreamAsync($ssml))}catch{" +
+                "$st=W($synth.SynthesizeTextToStreamAsync($text))};" +
                 "$reader=New-Object Windows.Storage.Streams.DataReader -ArgumentList $st.GetInputStreamAt(0);" +
                 "$null=W($reader.LoadAsync([uint32]$st.Size));" +
                 "$bytes=New-Object byte[] $st.Size;$reader.ReadBytes($bytes);" +
@@ -407,6 +415,8 @@ namespace Project8.UI
                 if (_renderingJob == job) _renderingJob = 0;
                 yield break;
             }
+            if (File.Exists(vname))
+                Debug.Log("[Project8] Rick voice: " + File.ReadAllText(vname));
             using (var req = UnityWebRequestMultimedia.GetAudioClip(
                        "file:///" + wav.Replace('\\', '/'), AudioType.WAV))
             {

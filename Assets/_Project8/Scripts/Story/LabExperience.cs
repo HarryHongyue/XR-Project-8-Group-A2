@@ -109,10 +109,6 @@ namespace Project8.Story
         }
         readonly List<PanelState> _panelStates = new List<PanelState>();
         bool _labImmersed;
-        /// <summary>TEMPORARY test aid: force-advances the tour one step per
-        /// click without waiting for the narration. REMOVE before the final
-        /// build ships - the user asked for a reminder.</summary>
-        GameObject _skipButton;
         Evaluation.PredictionTask _prediction;
         Evaluation.PredictionTask Prediction =>
             _prediction != null ? _prediction
@@ -214,7 +210,6 @@ namespace Project8.Story
 
             RuntimeCockpitTheme.Apply(_ship);
             EnsureDockNextButton();
-            EnsureSkipButton();
 
             // The persistent log rides with the ship - it exists in BOTH spaces.
             Transform avatar = _ship.Find("RickAvatar/Avatar");
@@ -880,39 +875,10 @@ namespace Project8.Story
             }
         }
 
-        /// <summary>TEMPORARY test control: a clone of the dock NEXT button
-        /// that force-advances the tour without waiting for narration. For
-        /// test builds only - strip before final delivery.</summary>
-        void EnsureSkipButton()
-        {
-            if (_story.nextButton == null) return;
-            var src = _story.nextButton.gameObject;
-            var go = Object.Instantiate(src, src.transform.parent);
-            go.name = "Btn_SkipTemp";
-            ((RectTransform)go.transform).anchoredPosition += new Vector2(0f, -62f);
-            var btn = go.GetComponent<Button>();
-            btn.onClick = new Button.ButtonClickedEvent();
-            btn.onClick.AddListener(SkipStep);
-            var label = go.GetComponentInChildren<Text>(true);
-            if (label != null)
-            {
-                label.text = "SKIP  ▸▸";
-                var localized = label.GetComponent<LocalizedText>();
-                if (localized != null)
-                {
-                    localized.english = "SKIP  ▸▸";
-                    localized.chinese = "跳过  ▸▸";
-                    localized.dutch = "SKIP  ▸▸";
-                }
-                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(label);
-            }
-            _skipButton = go;
-            _skipButton.SetActive(false);
-        }
-
-        /// <summary>TEMPORARY: drop the running narration and jump straight
-        /// to the next tour step (testing aid - waiting through every take is
-        /// too slow).</summary>
+        /// <summary>TEMPORARY test aid (called by StoryDirector's permanent
+        /// SKIP button): drop the running narration and jump straight to the
+        /// next tour step without waiting for _stepReady - remove with the
+        /// button before final delivery.</summary>
         public void SkipStep()
         {
             if (_step < 0) return;
@@ -920,7 +886,6 @@ namespace Project8.Story
             if (_step >= _steps.Count - 1)
             {
                 RestoreVoiceRate();
-                if (_skipButton != null) _skipButton.SetActive(false);
                 _story.OnTourFinished();
                 return;
             }
@@ -1185,7 +1150,6 @@ namespace Project8.Story
                 _savedVoiceRate = _story.voice.rate;
                 _story.voice.rate = 5;
             }
-            if (_skipButton != null) _skipButton.SetActive(true); // TEMP test aid
             ShowStep(0);
         }
 
@@ -1195,7 +1159,6 @@ namespace Project8.Story
             if (_step >= _steps.Count - 1)
             {
                 RestoreVoiceRate();
-                if (_skipButton != null) _skipButton.SetActive(false);
                 _story.OnTourFinished();
                 return;
             }
@@ -1235,7 +1198,6 @@ namespace Project8.Story
             if (_stationRings != null)
                 foreach (var ring in _stationRings)
                     if (ring != null) ring.SetActive(false);
-            if (_skipButton != null) _skipButton.SetActive(false);
             if (Prediction != null)
             {
                 Prediction.stationWorldPositions = null;
