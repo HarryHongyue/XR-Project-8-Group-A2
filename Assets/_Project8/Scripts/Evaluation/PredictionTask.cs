@@ -21,13 +21,55 @@ namespace Project8.Evaluation
         public SimulationUI ui;
         public RickSubtitles subtitles;
 
-        /// <summary>When set, these WORLD positions replace et.vertices - the
-        /// lab tour's cloned triangle is what the user answers about down
-        /// there; the retired in-space model's vertices would be wrong.</summary>
+        /// <summary>The lab tour injects the triangle's real corner positions
+        /// while the model is visible so the question asks about the stations
+        /// the user is looking at - otherwise we fall back to the display
+        /// model's vertices.</summary>
         public Vector3[] stationWorldPositions;
 
         public bool TaskActive { get; private set; }
         int _correctStation = -1;
+
+        /// <summary>Home position of the wave source, remembered so a mission
+        /// restart can put the merger's rings back where they belong.</summary>
+        Vector3 _originHome;
+        bool _hasOriginHome;
+        readonly System.Random _rng = new System.Random();
+        Story.LabExperience _lab;
+        Story.LabExperience Lab => _lab != null ? _lab
+            : (_lab = Object.FindFirstObjectByType<Story.LabExperience>());
+
+        /// <summary>Each round fires the wave from a DIFFERENT bearing around
+        /// the triangle - otherwise the same corner is always nearest and the
+        /// "prediction" is always the same answer. Moving waveOrigin shifts
+        /// both the physics (PropagationDistance) and the visible rings, so
+        /// the question and the visuals stay consistent.</summary>
+        void RandomizeWaveOrigin()
+        {
+            if (model == null || model.waveOrigin == null) return;
+            if (!_hasOriginHome)
+            {
+                _originHome = model.waveOrigin.position;
+                _hasOriginHome = true;
+            }
+            if (stationWorldPositions == null || stationWorldPositions.Length == 0)
+                return;
+            Vector3 centre = Vector3.zero;
+            foreach (var p in stationWorldPositions) centre += p;
+            centre /= stationWorldPositions.Length;
+            float azimuth = _rng.Next(0, 360);
+            Vector3 dir = Quaternion.Euler(0f, azimuth, 0f) * Vector3.forward;
+            model.waveOrigin.position = centre + dir * 16f + Vector3.up * 8f;
+        }
+
+        /// <summary>Put the merger's wave source back - called on mission
+        /// restart so space replays emit from the binary again.</summary>
+        public void RestoreOrigin()
+        {
+            if (_hasOriginHome && model != null && model.waveOrigin != null)
+                model.waveOrigin.position = _originHome;
+            _hasOriginHome = false;
+        }
 
         /// <summary>Fire a fresh wave at the stations and start a prediction
         /// round. The front KEEPS travelling - the learner watches the ring
@@ -48,6 +90,11 @@ namespace Project8.Evaluation
             if (cockpit != null) cockpit.OpenControls();
             var tabs = ui != null ? ui.GetComponent<ConsoleTabs>() : null;
             if (tabs != null) tabs.ShowET();
+
+            // New round, new bearing: every press of PREDICT NEXT WAVE fires
+            // the front in from a different side of the triangle, so D1, D2
+            // and D3 are each the right answer across rounds.
+            RandomizeWaveOrigin();
 
             // Rewind the clock so the front is ~5 sim-seconds short of the
             // NEAREST station, then let it RUN: enough inbound time to see
@@ -101,6 +148,7 @@ namespace Project8.Evaluation
             _correctStation = -1;
             UiSpotlightTarget.SetGroup("station-", false);
             if (et != null) et.SelectDetector(hit);
+            if (Lab != null) Lab.FlashStation(hit, true);
             ResearchLogger.Instance?.LogEvent("PredictionTask",
                 $"unanswered=D{hit + 1}");
             Announce(ExperienceSettings.IsChinese
@@ -151,15 +199,17 @@ namespace Project8.Evaluation
                 _correctStation = -1;
                 UiSpotlightTarget.SetGroup("station-", false);
                 if (et != null) et.SelectDetector(index);
+                if (Lab != null) Lab.FlashStation(index, true);
                 Announce(ExperienceSettings.IsChinese
                     ? $"正确——D{index + 1} 离波前最近，先测到信号。看它的探测器亮起来。"
                     : $"Correct - D{index + 1} is nearest the front and registers it first. Watch its detector light up.");
             }
             else
             {
+                if (Lab != null) Lab.FlashStation(index, false);
                 Announce(ExperienceSettings.IsChinese
-                    ? "不对——再看此刻波环离哪一站最近？趁波还没到，再答一次。"
-                    : "Not quite - look which station the ring is closest to now. Answer again before it arrives.");
+                    ? $"不对——D{index + 1} 这一角离波前还不是最近（已用红环标出）。再看此刻波环离哪一站最近？趁波还没到，再答一次。"
+                    : $"Not quite - D{index + 1} is not the nearest corner (marked red). Look which station the ring is closest to now, and answer again before it arrives.");
             }
         }
 

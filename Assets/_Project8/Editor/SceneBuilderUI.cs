@@ -240,9 +240,9 @@ namespace Project8.EditorTools
                 "- CONTROLS drawer - WAVE LAB tab: shape the wave (amplitude, " +
                 "frequency, exaggeration), save it into four slots; PREDICT WAVE " +
                 "previews your settings at the point you are observing.\n" +
-                "- ET tab: select station D1/D2/D3, toggle its optical detail, " +
-                "read the LF/HF channel readout, and run PREDICT NEXT STATION - " +
-                "the wave freezes and you answer with D1/D2/D3.\n" +
+                "- ET tab: select station D1/D2/D3, read the LF/HF channel " +
+                "readout, and press PREDICT NEXT WAVE - a fresh wave is fired " +
+                "at the triangle; answer with D1/D2/D3 before the front lands.\n" +
                 "- Desktop Enter advances the story; VR input is unchanged.\n\n" +
                 "WHAT IS REAL / WHAT IS SIMPLIFIED\n" +
                 "- Waves are emitted at merger and travel outward causally at a " +
@@ -271,8 +271,8 @@ namespace Project8.EditorTools
                 "如何操作\n" +
                 "- 开始/继续/重新开始任务在左侧任务坞上；左下角常驻坞随时播放/暂停。\n" +
                 "- 「控制台」抽屉——波形实验页：调节波形（振幅、频率、夸张度），存入四个槽位，「预测波形」在当前观察点播放你的参数效果。\n" +
-                "- ET 页：选择测站 D1/D2/D3，开关其光路细节，查看 LF/HF 通道读数；" +
-                "「预测下一测站」会把波冻结在半路，用 D1/D2/D3 作答。\n" +
+                "- ET 页：选择测站 D1/D2/D3，查看 LF/HF 通道读数；点「预测下一波」" +
+                "会朝三角阵列发射一道新引力波，趁波还没到达用 D1/D2/D3 抢答。\n" +
                 "- 桌面端回车键推进剧情；VR 输入不变。\n\n" +
                 "哪些是真实的，哪些是简化的\n" +
                 "- 波在并合时刻产生并因果地向外传播——因果性是真的，速度不是（真实引力波以光速传播）。\n" +
@@ -290,9 +290,9 @@ namespace Project8.EditorTools
                 "- CONTROLS-lade - tabblad WAVE LAB: vorm de golf (amplitude, " +
                 "frequentie, overdrijving), sla hem op in vier slots; VOORSPEL " +
                 "GOLF toont je instellingen op het punt dat je bekijkt.\n" +
-                "- ET-tab: kies station D1/D2/D3, schakel het optische detail " +
-                "om, lees de LF/HF-kanalen, en gebruik VOORSPEL VOLGEND " +
-                "STATION - de golf bevriest en je antwoordt met D1/D2/D3.\n" +
+                "- ET-tab: kies station D1/D2/D3, lees de LF/HF-kanalen, en " +
+                "gebruik VOORSPEL VOLGENDE GOLF - er wordt een nieuwe golf op " +
+                "de driehoek afgevuurd; antwoord met D1/D2/D3 voor aankomst.\n" +
                 "- Enter op desktop schakelt het verhaal verder; VR-invoer is ongewijzigd.\n\n" +
                 "WAT IS ECHT / WAT IS VEREENVOUDIGD\n" +
                 "- Golven ontstaan bij de samensmelting en planten zich causaal " +
@@ -620,11 +620,11 @@ namespace Project8.EditorTools
                 et.stationButtons[i].gameObject.AddComponent<UiSpotlightTarget>()
                     .id = $"station-{i + 1}";
             }
-            var detailBtn = Btn(etPage, "Btn_Detail", "DETAIL ON/OFF",
-                new Vector2(0f, 252f), 320f, et.ToggleDetail);
-            ((RectTransform)detailBtn.transform).sizeDelta = new Vector2(320f, 56f);
+            // The DETAIL toggle is retired: its target was the hidden in-space
+            // model, so in the lab it switched optics nobody could see. The
+            // station indicator keeps its slot.
             et.statusText = MakeText(etPage, "ETStatus", "", 20, FontStyle.Normal,
-                TextAnchor.MiddleCenter, InkSecondary, new Vector2(0f, 205f),
+                TextAnchor.MiddleCenter, InkSecondary, new Vector2(0f, 246f),
                 new Vector2(760f, 40f));
 
             var readout = NewUIObject("ETReadout", etPage);
@@ -645,7 +645,10 @@ namespace Project8.EditorTools
             MakeText(etPage, "SecPredict", "PREDICTION TASK", 20, FontStyle.Bold,
                 TextAnchor.MiddleCenter, Accent, new Vector2(0f, -8f),
                 new Vector2(500f, 32f));
-            var predictBtn = MakeButton(etPage, "Btn_Predict", "PREDICT NEXT STATION",
+            // "PREDICT NEXT WAVE": the button FIRES a wave first - the old
+            // "predict next station" wording hid that there was anything to
+            // launch before answering.
+            var predictBtn = MakeButton(etPage, "Btn_Predict", "PREDICT NEXT WAVE",
                 new Vector2(0f, -85f), 460f, task.BeginPrediction);
             ((RectTransform)predictBtn.transform.parent).sizeDelta =
                 new Vector2(460f, 68f);
@@ -653,13 +656,15 @@ namespace Project8.EditorTools
             predictBtn.transform.parent.gameObject
                 .AddComponent<UiSpotlightTarget>().id = "predict";
             MakeText(etPage, "PredictHint",
-                "freezes the wave mid-flight - answer with D1 / D2 / D3 above", 17,
+                "fires a fresh wave at the triangle - answer with D1 / D2 / D3 " +
+                "before the front lands", 17,
                 FontStyle.Italic, TextAnchor.MiddleCenter, InkFaint,
-                new Vector2(0f, -140f), new Vector2(900f, 32f));
+                new Vector2(0f, -140f), new Vector2(960f, 32f));
             MakeText(etPage, "PredictHint2",
-                "physics hint: the station nearest the merger registers the front first",
+                "physics hint: the corner the wave arrives from is different " +
+                "every round - the nearest station lights up first",
                 17, FontStyle.Italic, TextAnchor.MiddleCenter, InkFaint,
-                new Vector2(0f, -185f), new Vector2(900f, 32f));
+                new Vector2(0f, -185f), new Vector2(960f, 32f));
 
             // Initial state for edit-mode inspection and screenshots alike.
             wavePage.gameObject.SetActive(true);

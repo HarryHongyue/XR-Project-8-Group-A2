@@ -1105,8 +1105,8 @@ namespace Project8.EditorTools
                             tabs.ShowET();
                             Canvas.ForceUpdateCanvases();
                             Check(NoOverlap("Btn_D1", "Btn_D2", "Btn_D3",
-                                            "Btn_Detail", "Btn_Predict"),
-                                "ET page: stations / detail / predict do not overlap");
+                                            "Btn_Predict"),
+                                "ET page: stations / predict do not overlap");
                             tabs.ShowWave();
                         }
                         if (!drawerWasActive) cockpit.controlPanel.SetActive(false);

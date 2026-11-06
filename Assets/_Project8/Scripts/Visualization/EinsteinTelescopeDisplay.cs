@@ -121,13 +121,9 @@ namespace Project8.Visualization
             {
                 if (ExperienceSettings.IsChinese)
                     LocalizedText.UseChineseFont(statusText);
-                string station = ExperienceSettings.IsChinese ? "测站" : "Station";
-                string detail = DetailVisible
-                    ? (ExperienceSettings.IsChinese ? "细节 开"
-                       : ExperienceSettings.IsDutch ? "detail AAN" : "detail ON")
-                    : (ExperienceSettings.IsChinese ? "细节 关"
-                       : ExperienceSettings.IsDutch ? "detail UIT" : "detail OFF");
-                statusText.text = $"{station} {SelectedDetector + 1}  ·  {detail}";
+                string station = ExperienceSettings.IsChinese ? "测站"
+                    : ExperienceSettings.IsDutch ? "Station" : "Station";
+                statusText.text = $"{station} {SelectedDetector + 1}";
             }
         }
 

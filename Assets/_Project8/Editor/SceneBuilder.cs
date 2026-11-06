@@ -1523,6 +1523,7 @@ namespace Project8.EditorTools
                 case "Replay": return "重播";
                 case "Reset": return "重置";
                 case "PREDICT NEXT STATION": return "预测下一测站";
+                case "PREDICT NEXT WAVE": return "预测下一波";
                 case "ASK RICK": return "提问 RICK";
                 case "strain amplitude h0": return "应变振幅 h0";
                 case "frequency f (Hz)": return "频率 f（赫兹）";
@@ -1541,6 +1542,10 @@ namespace Project8.EditorTools
                 case "PREDICTION TASK": return "预测任务";
                 case "freezes the wave mid-flight - answer with D1 / D2 / D3 above":
                     return "把波冻结在半路——用上方 D1 / D2 / D3 作答";
+                case "fires a fresh wave at the triangle - answer with D1 / D2 / D3 before the front lands":
+                    return "朝三角阵列发射一道新引力波——趁波还没到达，用 D1 / D2 / D3 作答";
+                case "physics hint: the corner the wave arrives from is different every round - the nearest station lights up first":
+                    return "物理提示：每轮波来的方向都不一样——波前先到的那一站先亮";
                 case "physics hint: the station nearest the merger registers the front first":
                     return "物理提示：离并合点最近的测站最先测到波前";
                 case "MISSION TOOLS": return "任务工具";
@@ -1590,6 +1595,7 @@ namespace Project8.EditorTools
                 case "Replay": return "Opnieuw";
                 case "Reset": return "Resetten";
                 case "PREDICT NEXT STATION": return "Voorspel volgend station";
+                case "PREDICT NEXT WAVE": return "VOORSPEL VOLGENDE GOLF";
                 case "ASK RICK": return "VRAAG AAN RICK";
                 case "strain amplitude h0": return "rek-amplitude h0";
                 case "frequency f (Hz)": return "frequentie f (Hz)";
@@ -1608,6 +1614,10 @@ namespace Project8.EditorTools
                 case "PREDICTION TASK": return "VOORSPEL-TAAK";
                 case "freezes the wave mid-flight - answer with D1 / D2 / D3 above":
                     return "bevriest de golf - antwoord met D1 / D2 / D3 hierboven";
+                case "fires a fresh wave at the triangle - answer with D1 / D2 / D3 before the front lands":
+                    return "vuurt een nieuwe golf op de driehoek af - antwoord met D1 / D2 / D3 voor aankomst";
+                case "physics hint: the corner the wave arrives from is different every round - the nearest station lights up first":
+                    return "natuurkundige hint: elke ronde komt de golf uit een andere richting - het dichtstbijzijnde station licht eerst op";
                 case "physics hint: the station nearest the merger registers the front first":
                     return "natuurkundige hint: het station dichtst bij de samensmelting voelt het front eerst";
                 case "MISSION TOOLS": return "MISSIE-TOOLS";

@@ -91,6 +91,28 @@ namespace Project8.Story
         /// <summary>Floating D1/D2/D3 captions over the triangle corners -
         /// only ever active while the triangle model itself is.</summary>
         List<GameObject> _etStationLabels;
+        /// <summary>Colour halo under each station, flashed by the prediction
+        /// answer (green = right pick / actual first hit, red = wrong pick).</summary>
+        List<GameObject> _stationRings;
+        Coroutine _flashRoutine;
+        /// <summary>Ship renderers hidden while the lab is up - the hull base
+        /// used to block the bench view. The rig itself (camera + flight)
+        /// stays fully alive.</summary>
+        readonly List<Renderer> _shipHidden = new List<Renderer>();
+        /// <summary>Saved parent + local transform of every ship canvas before
+        /// they were re-homed onto the camera for lab mode.</summary>
+        class PanelState
+        {
+            public Transform t, parent;
+            public Vector3 pos, scale;
+            public Quaternion rot;
+        }
+        readonly List<PanelState> _panelStates = new List<PanelState>();
+        bool _labImmersed;
+        /// <summary>TEMPORARY test aid: force-advances the tour one step per
+        /// click without waiting for the narration. REMOVE before the final
+        /// build ships - the user asked for a reminder.</summary>
+        GameObject _skipButton;
         Evaluation.PredictionTask _prediction;
         Evaluation.PredictionTask Prediction =>
             _prediction != null ? _prediction
@@ -99,6 +121,7 @@ namespace Project8.Story
         // -------------------------------------------------------- materials --
         Material _rock, _floor, _metal, _bench, _console, _glass;
         Material _beamRed, _beamCyan, _glowCyan, _detectorGlow;
+        Material _ringGood, _ringBad;
 
         // demo part focus points (world space), filled during build
         GameObject _demoRoot, _benchRoot;
@@ -191,6 +214,7 @@ namespace Project8.Story
 
             RuntimeCockpitTheme.Apply(_ship);
             EnsureDockNextButton();
+            EnsureSkipButton();
 
             // The persistent log rides with the ship - it exists in BOTH spaces.
             Transform avatar = _ship.Find("RickAvatar/Avatar");
@@ -242,6 +266,14 @@ namespace Project8.Story
             _glowCyan.EnableKeyword("_EMISSION");
             _glowCyan.SetColor("_EmissionColor", new Color(0.1f, 1.2f, 1.3f));
             _detectorGlow = _glowCyan;
+            // Answer feedback: the station the user picked (or the one that
+            // actually lit first) flashes a colour ring at its base.
+            _ringGood = StdMat(new Color(0.18f, 1f, 0.45f), 0.5f);
+            _ringGood.EnableKeyword("_EMISSION");
+            _ringGood.SetColor("_EmissionColor", new Color(0.2f, 1.4f, 0.55f));
+            _ringBad = StdMat(new Color(1f, 0.22f, 0.18f), 0.5f);
+            _ringBad.EnableKeyword("_EMISSION");
+            _ringBad.SetColor("_EmissionColor", new Color(1.4f, 0.25f, 0.2f));
         }
 
         static Material StdMat(Color c, float gloss)
@@ -389,11 +421,23 @@ namespace Project8.Story
             if (_ligo != null) _ligo.gameObject.SetActive(false);
         }
 
-        /// <summary>Keep the ship inside the scaled Earth interior even if the
-        /// user flies through the cavern wall. The inward-facing shell remains
-        /// visible around them instead of exposing the old space backdrop.</summary>
+        /// <summary>Inside the cavern the rock walls are the hard limit - the
+        /// old Earth-interior sphere sat OUTSIDE them, so the ship could slip
+        /// through a wall and float in the grey shell gap. While the lab root
+        /// is awake we clamp to the cavern's inner box instead; outside the
+        /// lab the legacy sphere clamp still applies.</summary>
         public Vector3 ClampPilotPosition(Vector3 worldPosition)
         {
+            if (_labRoot != null && _labRoot.activeSelf)
+            {
+                // Cavern interior minus a body margin (half-extent 21, inner
+                // height 13 local units): walls can no longer be crossed.
+                Vector3 local = _labRoot.transform.InverseTransformPoint(worldPosition);
+                local.x = Mathf.Clamp(local.x, -20.1f, 20.1f);
+                local.y = Mathf.Clamp(local.y, 0.5f, 12.2f);
+                local.z = Mathf.Clamp(local.z, -20.1f, 20.1f);
+                return _labRoot.transform.TransformPoint(local);
+            }
             if (_earth == null) return worldPosition;
             Vector3 offset = worldPosition - _earth.position;
             float safeRadius = EarthRadiusGuess - 2f;
@@ -572,18 +616,40 @@ namespace Project8.Story
                     _etModelRoot.transform.TransformPoint(corners[i]);
             Vector3 bisector = (Vector3.right +
                 new Vector3(0.5f, 0f, 0.8660254f)).normalized; // demo's 60-deg V
+            // ONE shared observatory platform under the whole triangle - the
+            // earlier per-station plinths made the rig read as three unrelated
+            // detectors. Top at y=1.0; the station optics hover 0.02 above it.
+            var platform = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            platform.name = "EtPlatform";
+            platform.transform.SetParent(_etModelRoot.transform, false);
+            platform.transform.localPosition = new Vector3(0f, 0.5f, 0f);
+            platform.transform.localScale = new Vector3(18f, 0.5f, 18f);
+            platform.GetComponent<Renderer>().sharedMaterial = _bench;
+            KillCollider(platform);
+
+            // Colour rings hidden under each station - the prediction answer
+            // flashes the picked corner green (right) or red (wrong).
+            _stationRings = new List<GameObject>();
+            for (int i = 0; i < corners.Length; i++)
+            {
+                var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                ring.name = "StationRing_D" + (i + 1);
+                ring.transform.SetParent(_etModelRoot.transform, false);
+                ring.transform.localPosition = corners[i] + Vector3.up * 1.02f;
+                ring.transform.localScale = new Vector3(9.4f, 0.02f, 9.4f);
+                ring.GetComponent<Renderer>().sharedMaterial = _ringGood;
+                KillCollider(ring);
+                ring.SetActive(false);
+                _stationRings.Add(ring);
+            }
+
             for (int i = 0; i < corners.Length; i++)
             {
                 var clone = Object.Instantiate(demoSource.gameObject,
                     _etModelRoot.transform);
                 clone.name = "EtStation_D" + (i + 1);
-                // Optics float at bench height over a small plinth - the demo
-                // bench table is not part of the cloned hierarchy.
-                MakeBox(_etModelRoot.transform, "Plinth_D" + (i + 1),
-                    corners[i] + Vector3.up * 0.5f,
-                    new Vector3(4.6f, 1f, 4.6f), _bench);
                 clone.transform.localPosition =
-                    corners[i] + Vector3.up * 1.02f;
+                    corners[i] + Vector3.up * 1.04f;
                 Vector3 toCentre = (-corners[i]).normalized;
                 float yaw = Vector3.SignedAngle(bisector, toCentre, Vector3.up);
                 clone.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
@@ -606,16 +672,16 @@ namespace Project8.Story
                 _etStationLabels.Add(lbl);
             }
 
-            // A faint triangle guide-line on the floor ties the three stations
-            // into one observatory.
+            // A faint triangle guide-line across the platform top ties the
+            // three stations into one observatory.
             var tri = new GameObject("EtTriangleGuide");
             tri.transform.SetParent(_etModelRoot.transform, false);
             var lr = tri.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.positionCount = 4;
             for (int i = 0; i < 3; i++)
-                lr.SetPosition(i, corners[i] + Vector3.up * 0.03f);
-            lr.SetPosition(3, corners[0] + Vector3.up * 0.03f);
+                lr.SetPosition(i, corners[i] + Vector3.up * 1.05f);
+            lr.SetPosition(3, corners[0] + Vector3.up * 1.05f);
             lr.widthMultiplier = 0.05f;
             lr.sharedMaterial = _beamCyan;
             lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -814,6 +880,129 @@ namespace Project8.Story
             }
         }
 
+        /// <summary>TEMPORARY test control: a clone of the dock NEXT button
+        /// that force-advances the tour without waiting for narration. For
+        /// test builds only - strip before final delivery.</summary>
+        void EnsureSkipButton()
+        {
+            if (_story.nextButton == null) return;
+            var src = _story.nextButton.gameObject;
+            var go = Object.Instantiate(src, src.transform.parent);
+            go.name = "Btn_SkipTemp";
+            ((RectTransform)go.transform).anchoredPosition += new Vector2(0f, -62f);
+            var btn = go.GetComponent<Button>();
+            btn.onClick = new Button.ButtonClickedEvent();
+            btn.onClick.AddListener(SkipStep);
+            var label = go.GetComponentInChildren<Text>(true);
+            if (label != null)
+            {
+                label.text = "SKIP  ▸▸";
+                var localized = label.GetComponent<LocalizedText>();
+                if (localized != null)
+                {
+                    localized.english = "SKIP  ▸▸";
+                    localized.chinese = "跳过  ▸▸";
+                    localized.dutch = "SKIP  ▸▸";
+                }
+                if (ExperienceSettings.IsChinese) LocalizedText.UseChineseFont(label);
+            }
+            _skipButton = go;
+            _skipButton.SetActive(false);
+        }
+
+        /// <summary>TEMPORARY: drop the running narration and jump straight
+        /// to the next tour step (testing aid - waiting through every take is
+        /// too slow).</summary>
+        public void SkipStep()
+        {
+            if (_step < 0) return;
+            if (_story.subtitles != null) _story.subtitles.ResetTransport();
+            if (_step >= _steps.Count - 1)
+            {
+                RestoreVoiceRate();
+                if (_skipButton != null) _skipButton.SetActive(false);
+                _story.OnTourFinished();
+                return;
+            }
+            ShowStep(_step + 1);
+        }
+
+        /// <summary>Flash a colour ring under one ET corner - green for a
+        /// correct pick / the station that actually lit first, red for a
+        /// wrong pick. The D-label above it tints to match.</summary>
+        public void FlashStation(int index, bool correct)
+        {
+            if (_stationRings == null || index < 0 || index >= _stationRings.Count)
+                return;
+            if (_flashRoutine != null) StopCoroutine(_flashRoutine);
+            _flashRoutine = StartCoroutine(FlashRoutine(index, correct));
+        }
+
+        System.Collections.IEnumerator FlashRoutine(int index, bool correct)
+        {
+            var ring = _stationRings[index];
+            ring.GetComponent<Renderer>().sharedMaterial =
+                correct ? _ringGood : _ringBad;
+            ring.SetActive(true);
+            Text lbl = _etStationLabels != null && index < _etStationLabels.Count
+                ? _etStationLabels[index].GetComponentInChildren<Text>() : null;
+            Color prev = lbl != null ? lbl.color : Color.white;
+            if (lbl != null)
+                lbl.color = correct
+                    ? new Color(0.4f, 1f, 0.55f, 1f)
+                    : new Color(1f, 0.45f, 0.4f, 1f);
+            yield return new WaitForSeconds(2.4f);
+            if (lbl != null) lbl.color = prev;
+            ring.SetActive(false);
+            _flashRoutine = null;
+        }
+
+        /// <summary>Lab immersion toggle: hide the ship's own hull/instrument
+        /// meshes (they blocked the optics) while the rig keeps flying, and
+        /// re-home every ship canvas onto the camera so all panels ride with
+        /// the user's view instead of floating at a fixed height. Restored on
+        /// mission restart.</summary>
+        void SetLabImmersed(bool on)
+        {
+            if (on == _labImmersed || _ship == null || _cam == null) return;
+            _labImmersed = on;
+            if (on)
+            {
+                foreach (var r in _ship.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!r.enabled || r.transform.IsChildOf(_veilRoot)) continue;
+                    r.enabled = false;
+                    _shipHidden.Add(r);
+                }
+                foreach (var canvas in _ship.GetComponentsInChildren<Canvas>(true))
+                {
+                    var t = canvas.transform;
+                    _panelStates.Add(new PanelState
+                    {
+                        t = t, parent = t.parent,
+                        pos = t.localPosition, rot = t.localRotation,
+                        scale = t.localScale
+                    });
+                    t.SetParent(_cam.transform, true);
+                }
+            }
+            else
+            {
+                foreach (var r in _shipHidden)
+                    if (r != null) r.enabled = true;
+                _shipHidden.Clear();
+                foreach (var s in _panelStates)
+                {
+                    if (s.t == null) continue;
+                    s.t.SetParent(s.parent, false);
+                    s.t.localPosition = s.pos;
+                    s.t.localRotation = s.rot;
+                    s.t.localScale = s.scale;
+                }
+                _panelStates.Clear();
+            }
+        }
+
         // -------------------------------------------------------- the tour ---
         void DefineSteps()
         {
@@ -956,27 +1145,28 @@ namespace Project8.Story
             });
             _steps.Add(new Step
             {
-                titleEn = "8. Your turn - predict the next station",
-                titleZh = "8. 轮到你了——预测下一测站",
-                titleNl = "8. Jouw beurt - voorspel het volgende station",
+                titleEn = "8. Your turn - predict the next wave",
+                titleZh = "8. 轮到你了——预测下一波",
+                titleNl = "8. Jouw beurt - voorspel de volgende golf",
                 en = "Rick: Your turn. The same wavefront does not reach all " +
-                     "three corners at once - the one nearest the merger " +
-                     "registers it first. Open CONTROLS and switch to the ET " +
-                     "tab, then press PREDICT NEXT STATION: a fresh wave is " +
-                     "fired at the triangle. Watch the ring close in and press " +
-                     "D1, D2 or D3 - whichever station you believe lights up " +
-                     "first - before the front arrives.",
-                zh = "Rick：轮到你了。同一道波前不会同时到达三个角——离并合点最近的" +
-                     "那一角最先测到。打开「控制台」切到 ET 页，点「预测下一测站」：" +
-                     "一道新的引力波会射向三角阵列。盯住逼近的波环，趁波还没到，" +
-                     "按下你认为会先亮的那一站——D1、D2 或 D3。",
+                     "three corners at once - the corner it arrives from " +
+                     "nearest lights up first. Open CONTROLS and switch to " +
+                     "the ET tab, then press PREDICT NEXT WAVE: a fresh wave " +
+                     "is fired at the triangle from a random direction. " +
+                     "Watch the ring close in and press D1, D2 or D3 - " +
+                     "whichever station you believe lights up first - " +
+                     "before the front arrives.",
+                zh = "Rick：轮到你了。同一道波前不会同时到达三个角——它从哪个方向来，" +
+                     "最近的角就先亮。打开「控制台」切到 ET 页，点「预测下一波」：" +
+                     "一道新的引力波会从随机方向射向三角阵列。盯住逼近的波环，" +
+                     "趁波还没到，按下你认为会先亮的那一站——D1、D2 或 D3。",
                 nl = "Rick: Nu ben jij aan zet. Hetzelfde golffront bereikt de " +
-                     "drie hoeken niet tegelijk - de hoek dichtst bij de " +
-                     "samensmelting voelt hem eerst. Open CONTROLS, ga naar de " +
-                     "ET-tab en druk op VOORSPEL VOLGEND STATION: er wordt een " +
-                     "nieuwe golf op de driehoek afgevuurd. Zie de ring naderen " +
-                     "en druk op D1, D2 of D3 - het station dat volgens jou " +
-                     "eerst oplicht - vóór het front arriveert.",
+                     "drie hoeken niet tegelijk - de hoek van waaruit het " +
+                     "komt licht eerst op. Open CONTROLS, ga naar de ET-tab " +
+                     "en druk op VOORSPEL VOLGENDE GOLF: er wordt een nieuwe " +
+                     "golf uit een willekeurige richting afgevuurd. Zie de " +
+                     "ring naderen en druk op D1, D2 of D3 - het station " +
+                     "dat volgens jou eerst oplicht - vóór het front arriveert.",
                 highlightEt = true, showEt = true,
                 spotDuring = "controls",
                 spotAfter = "tab-et predict"
@@ -995,6 +1185,7 @@ namespace Project8.Story
                 _savedVoiceRate = _story.voice.rate;
                 _story.voice.rate = 5;
             }
+            if (_skipButton != null) _skipButton.SetActive(true); // TEMP test aid
             ShowStep(0);
         }
 
@@ -1004,6 +1195,7 @@ namespace Project8.Story
             if (_step >= _steps.Count - 1)
             {
                 RestoreVoiceRate();
+                if (_skipButton != null) _skipButton.SetActive(false);
                 _story.OnTourFinished();
                 return;
             }
@@ -1034,11 +1226,21 @@ namespace Project8.Story
             ApplyLabelHighlights();
             RestoreVoiceRate();
             // Mission restarts back in space: hide the cavern again so it can
-            // never be seen as a floating box below the Earth.
+            // never be seen as a floating box below the Earth - and give the
+            // user their ship + ship-pinned panels back.
+            SetLabImmersed(false);
             if (_labRoot != null) _labRoot.SetActive(false);
             if (_ligo != null) _ligo.gameObject.SetActive(false);
             if (_etModelRoot != null) _etModelRoot.SetActive(false);
-            if (Prediction != null) Prediction.stationWorldPositions = null;
+            if (_stationRings != null)
+                foreach (var ring in _stationRings)
+                    if (ring != null) ring.SetActive(false);
+            if (_skipButton != null) _skipButton.SetActive(false);
+            if (Prediction != null)
+            {
+                Prediction.stationWorldPositions = null;
+                Prediction.RestoreOrigin();
+            }
             SetDemoStationVisible(true);
             if (_story.nextButton != null) _story.nextButton.gameObject.SetActive(false);
         }
@@ -1116,7 +1318,7 @@ namespace Project8.Story
         Vector3 FocusForStep(Step step)
         {
             if (step.highlightEt)
-                return _etPos + Vector3.up * 0.8f;
+                return _etPos + Vector3.up * 0.6f;
 
             bool hasA = step.highlightA >= 0 && step.highlightA < _partFocus.Count;
             Vector3 a = hasA ? _partFocus[step.highlightA] : FocusPoint;
@@ -1141,11 +1343,10 @@ namespace Project8.Story
             // at its back. -_fwd is the pad's forward direction toward the
             // bench, so the vantage always ends up on the viewing side.
             Vector3 away = -_fwd;
-            float standoff = step.highlightEt ? 3.4f : 1.7f;
-            float lift = step.highlightEt ? 1.7f : 1.05f;
-            // Park noticeably ABOVE the part: the XR guidance then pitches the
-            // user's view down onto it (the earlier flat standoff never aimed
-            // the camera at anything).
+            // Close and slightly above - a crane-height vantage made the user
+            // ask why the camera floated so far overhead.
+            float standoff = step.highlightEt ? 2.5f : 1.25f;
+            float lift = step.highlightEt ? 0.85f : 0.5f;
             Vector3 vantage = focus + away * standoff + Vector3.up * lift;
             vantage = _story.ClampLabPosition(vantage);
             cockpit.GuideLookAt(focus, vantage);
@@ -1269,6 +1470,9 @@ namespace Project8.Story
             }
             _ship.SetPositionAndRotation(ParkPosition,
                 Quaternion.LookRotation(_fwd, Vector3.up));
+            // Hide the hull and re-home the panels on the camera while the
+            // veil is still black - the swap is invisible under the card.
+            SetLabImmersed(true);
             yield return new WaitForSeconds(1.4f);
             if (_loadingCard != null) _loadingCard.SetActive(false);
 

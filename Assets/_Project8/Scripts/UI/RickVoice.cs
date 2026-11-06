@@ -38,6 +38,7 @@ namespace Project8.UI
         }
 
         AudioSource _source;
+        AudioSource _keepAwake;
         int _job;
         bool _available;
         int _renderingJob;
@@ -49,6 +50,18 @@ namespace Project8.UI
             _source = gameObject.AddComponent<AudioSource>();
             _source.spatialBlend = 0f;
             _source.playOnAwake = false;
+
+            // Audio endpoints sleep after a few silent seconds; the wake-up
+            // then eats the first ~300 ms of the next utterance - heard as
+            // every sentence losing its first characters. A zero-gain looping
+            // clip keeps the mixer + output device permanently warm.
+            _keepAwake = gameObject.AddComponent<AudioSource>();
+            _keepAwake.clip = AudioClip.Create("voice-keep-awake", 4410, 1, 44100, false);
+            _keepAwake.loop = true;
+            _keepAwake.volume = 0.002f;
+            _keepAwake.spatialBlend = 0f;
+            _keepAwake.playOnAwake = false;
+            _keepAwake.Play();
         }
 
         /// <summary>Hard-stop the current utterance on every platform (the caller
@@ -292,28 +305,63 @@ namespace Project8.UI
 
             string iso = ExperienceSettings.IsChinese ? "zh"
                 : ExperienceSettings.IsDutch ? "nl" : "en";
-            string maleVoiceSelection =
-                "$voices = $s.GetInstalledVoices() | Where-Object " +
-                "{$_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq '" + iso + "'}; " +
-                "$v = $voices | Where-Object " +
-                "{$_.VoiceInfo.Gender.ToString() -eq 'Male'} | Select-Object -First 1; " +
-                "if (-not $v) { $v = $voices | Select-Object -First 1 }; " +
-                "if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; ";
+            string culture = ExperienceSettings.IsChinese ? "zh-CN"
+                : ExperienceSettings.IsDutch ? "nl-NL" : "en-US";
+            // MALE VOICE: voices installed through Windows Settings (OneCore)
+            // are invisible to System.Speech/SAPI5 - SAPI only sees the old
+            // desktop voices (this machine: two female voices). WinRT's
+            // Windows.Media.SpeechSynthesis sees the OneCore set too, which
+            // here includes Kangkang (zh-CN male) and Frank (nl-NL male).
+            // Try WinRT first; when no voice exists for the language (en on
+            // this PC) fall back to SAPI5 with a lowered prosody pitch.
             string script =
-                "Add-Type -AssemblyName System.Speech; " +
-                "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
-                maleVoiceSelection +
-                "$s.Rate = " + rate + "; $s.Volume = " + volume + "; " +
-                "$s.SetOutputToWaveFile('" + wav.Replace("'", "''") + "'); " +
-                // A 180 ms silence at the head of every clip: each sentence is
-                // its own wav+Play() now, and the audio output's spin-up after
-                // idle was eating the first syllable of every sentence. Let it
-                // eat the leading pause instead.
-                "$pb = New-Object System.Speech.Synthesis.PromptBuilder; " +
-                "$pb.AppendBreak([TimeSpan]::FromMilliseconds(180)); " +
-                "$pb.AppendText([IO.File]::ReadAllText('" + txt.Replace("'", "''") +
-                "', [Text.Encoding]::UTF8)); " +
-                "$s.Speak($pb); $s.Dispose()";
+                "$wav='" + wav.Replace("'", "''") + "'; " +
+                "$txt='" + txt.Replace("'", "''") + "'; " +
+                "$text=[IO.File]::ReadAllText($txt,[Text.Encoding]::UTF8); " +
+                "function W($o){while($o.Status -eq 'Started'){" +
+                "Start-Sleep -Milliseconds 10};$o.GetResults()}; " +
+                "$ok=$false; " +
+                "try{Add-Type -AssemblyName System.Runtime.WindowsRuntime;" +
+                "$synth=New-Object Windows.Media.SpeechSynthesis.SpeechSynthesizer;" +
+                "$all=[Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices;" +
+                "$v=$all|Where-Object{$_.Language -like '" + iso +
+                "-*' -and $_.Gender -eq 'Male'}|Select-Object -First 1;" +
+                "if(-not $v){$v=$all|Where-Object{$_.Language -like '" + iso +
+                "-*'}|Select-Object -First 1};" +
+                "if($v){$synth.Voice=$v;" +
+                "$synth.Options.SpeakingRate=" +
+                Mathf.Clamp(1f + rate * 0.1f, 0.5f, 2f)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture) + ";" +
+                "$ssml='<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"" +
+                culture + "\"><voice xml:lang=\"" + culture +
+                "\"><break time=\"350ms\"/>'+[Security.SecurityElement]::Escape($text)+'</voice></speak>';" +
+                "$st=W($synth.SynthesizeSsmlToStreamAsync($ssml));" +
+                "$reader=New-Object Windows.Storage.Streams.DataReader -ArgumentList $st.GetInputStreamAt(0);" +
+                "$null=W($reader.LoadAsync([uint32]$st.Size));" +
+                "$bytes=New-Object byte[] $st.Size;$reader.ReadBytes($bytes);" +
+                "[IO.File]::WriteAllBytes($wav,$bytes);$ok=$true}}catch{$ok=$false} " +
+                "if(-not $ok){" +
+                "Add-Type -AssemblyName System.Speech;" +
+                "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;" +
+                "$vs=$s.GetInstalledVoices()|Where-Object{" +
+                "$_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq '" + iso + "'};" +
+                "$m=$vs|Where-Object{$_.VoiceInfo.Gender.ToString() -eq 'Male'}|" +
+                "Select-Object -First 1;" +
+                "if(-not $m){$m=$vs|Select-Object -First 1};" +
+                "if($m){$s.SelectVoice($m.VoiceInfo.Name)};" +
+                "$s.Rate=" + rate + ";$s.Volume=" + volume + ";" +
+                "$s.SetOutputToWaveFile($wav);" +
+                // SAPI5 fallback (English on this PC): no male voice exists,
+                // so deepen whatever voice is left with SSML prosody. The
+                // leading 350 ms break absorbs audio-device wake-up latency.
+                "$ssml2='<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"" +
+                culture + "\"><break time=\"350ms\"/><prosody pitch=\"-18%\">'+" +
+                "[Security.SecurityElement]::Escape($text)+'</prosody></speak>';" +
+                "try{$s.SpeakSsml($ssml2)}catch{" +
+                "$pb=New-Object System.Speech.Synthesis.PromptBuilder;" +
+                "$pb.AppendBreak([TimeSpan]::FromMilliseconds(350));" +
+                "$pb.AppendText($text);$s.Speak($pb)};" +
+                "$s.Dispose()}";
 
             bool done = false;
             System.Threading.Tasks.Task.Run(() =>
