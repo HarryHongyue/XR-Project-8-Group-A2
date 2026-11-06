@@ -17979,9 +17979,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Project8.AI.AITutor
   knowledgeBase: {fileID: 11400000, guid: 8a41f40a9a652124790f3284a2ed6404, type: 2}
   useRemoteBackend: 1
-  endpoint: https://integrate.api.nvidia.com/v1/chat/completions
-  model: openai/gpt-oss-20b
-  apiKeyEnvironmentVariable: OPENAI_API_KEY
+  endpoint: https://omnigent-1-resource.services.ai.azure.com/openai/v1/chat/completions
+  model: gpt-5-mini
+  apiKeyEnvironmentVariable: FOUNDRY_OPENAI_API_KEY
   azureStyleAuth: 1
   systemPrompt: 'You are Rick, a friendly physics tutor inside a VR lesson about gravitational waves and the Einstein Telescope. RULES: answer in at most 3 short sentences; use plain everyday language and one simple analogy (a trampoline, ripples on a pond, a rubber sheet); no formulas, no jargon, no markdown; match the user''s language. The app deliberately slows and exaggerates the wave - if relevant, say what is real vs. a visualization choice in one clause.'
   onAnswer:

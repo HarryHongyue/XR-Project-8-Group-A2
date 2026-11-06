@@ -421,6 +421,20 @@ namespace Project8.Story
         /// through a wall and float in the grey shell gap. While the lab root
         /// is awake we clamp to the cavern's inner box instead; outside the
         /// lab the legacy sphere clamp still applies.</summary>
+        /// <summary>Height the tracked head sits above the ship root, in
+        /// lab-local units. ~0 on the desktop mirror (camera at the root) but
+        /// ~8 local units (1.6m world) in VR - the clamp and the guided
+        /// vantage must reserve that headroom or the EYE, not the hull, ends
+        /// up inside the ceiling lamps.</summary>
+        float HeadOffsetLocal()
+        {
+            if (_cam == null || _ship == null || _labRoot == null) return 0f;
+            float scale = _labRoot.transform.lossyScale.y;
+            if (scale <= 0.0001f) return 0f;
+            return Mathf.Max(0f,
+                (_cam.transform.position.y - _ship.position.y) / scale);
+        }
+
         public Vector3 ClampPilotPosition(Vector3 worldPosition)
         {
             if (_labRoot != null && _labRoot.activeSelf)
@@ -428,8 +442,11 @@ namespace Project8.Story
                 // Cavern interior minus a body margin (half-extent 21, inner
                 // height 13 local units): walls can no longer be crossed.
                 Vector3 local = _labRoot.transform.InverseTransformPoint(worldPosition);
+                // Ceiling lamp strips / point lights hang at ~12-12.85 local.
+                // The cap clamps the SHIP root; subtract the VR head offset so
+                // the EYE stays below the fixtures instead of poking through.
                 local.x = Mathf.Clamp(local.x, -20.1f, 20.1f);
-                local.y = Mathf.Clamp(local.y, 0.5f, 12.2f);
+                local.y = Mathf.Clamp(local.y, 0.5f, 10.2f - HeadOffsetLocal());
                 local.z = Mathf.Clamp(local.z, -20.1f, 20.1f);
                 return _labRoot.transform.TransformPoint(local);
             }
@@ -622,16 +639,18 @@ namespace Project8.Story
             platform.GetComponent<Renderer>().sharedMaterial = _bench;
             KillCollider(platform);
 
-            // Colour rings hidden under each station - the prediction answer
-            // flashes the picked corner green (right) or red (wrong).
+            // Small glowing marker above each station - the prediction answer
+            // flashes the picked corner's beacon green (right) or red (wrong).
+            // A floor-hugging halo was unreadable; a beacon at head height is
+            // unmistakably "THIS station".
             _stationRings = new List<GameObject>();
             for (int i = 0; i < corners.Length; i++)
             {
-                var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                ring.name = "StationRing_D" + (i + 1);
+                var ring = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                ring.name = "StationBeacon_D" + (i + 1);
                 ring.transform.SetParent(_etModelRoot.transform, false);
-                ring.transform.localPosition = corners[i] + Vector3.up * 1.02f;
-                ring.transform.localScale = new Vector3(9.4f, 0.02f, 9.4f);
+                ring.transform.localPosition = corners[i] + Vector3.up * 2.7f;
+                ring.transform.localScale = Vector3.one * 1.15f;
                 ring.GetComponent<Renderer>().sharedMaterial = _ringGood;
                 KillCollider(ring);
                 ring.SetActive(false);
@@ -916,7 +935,18 @@ namespace Project8.Story
                 lbl.color = correct
                     ? new Color(0.4f, 1f, 0.55f, 1f)
                     : new Color(1f, 0.45f, 0.4f, 1f);
-            yield return new WaitForSeconds(2.4f);
+            // Pulse the beacon so the eye is pulled to THIS corner - a static
+            // marker was easy to miss between the three identical stations.
+            Vector3 baseScale = ring.transform.localScale;
+            float t = 0f;
+            while (t < 2.4f)
+            {
+                float pulse = 1f + 0.45f * Mathf.Sin(t * 9f);
+                ring.transform.localScale = baseScale * pulse;
+                t += Time.deltaTime;
+                yield return null;
+            }
+            ring.transform.localScale = baseScale;
             if (lbl != null) lbl.color = prev;
             ring.SetActive(false);
             _flashRoutine = null;
@@ -1280,7 +1310,7 @@ namespace Project8.Story
         Vector3 FocusForStep(Step step)
         {
             if (step.highlightEt)
-                return _etPos + Vector3.up * 0.6f;
+                return _etPos + Vector3.up * 0.45f;
 
             bool hasA = step.highlightA >= 0 && step.highlightA < _partFocus.Count;
             Vector3 a = hasA ? _partFocus[step.highlightA] : FocusPoint;
@@ -1305,11 +1335,17 @@ namespace Project8.Story
             // at its back. -_fwd is the pad's forward direction toward the
             // bench, so the vantage always ends up on the viewing side.
             Vector3 away = -_fwd;
-            // Close and slightly above - a crane-height vantage made the user
-            // ask why the camera floated so far overhead.
-            float standoff = step.highlightEt ? 2.5f : 1.25f;
-            float lift = step.highlightEt ? 0.85f : 0.5f;
+            // Eye-level-ish, not ceiling-level: the cavern is only ~2.6m tall
+            // in world units, so a 0.85m lift parked the camera among the
+            // lamp strips. Sit just above the station optics instead - and in
+            // VR subtract the head offset so the EYE lands at lift height,
+            // not the hull root (that was the "camera hits the ceiling" bug).
+            float standoff = step.highlightEt ? 1.8f : 1.25f;
+            float lift = step.highlightEt ? 0.28f : 0.45f;
             Vector3 vantage = focus + away * standoff + Vector3.up * lift;
+            if (_cam != null && _ship != null)
+                vantage.y -= Mathf.Max(0f,
+                    _cam.transform.position.y - _ship.position.y);
             vantage = _story.ClampLabPosition(vantage);
             cockpit.GuideLookAt(focus, vantage);
         }

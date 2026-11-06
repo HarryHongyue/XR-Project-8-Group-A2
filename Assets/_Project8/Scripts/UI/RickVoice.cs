@@ -323,10 +323,28 @@ namespace Project8.UI
                 "$txt='" + txt.Replace("'", "''") + "'; " +
                 "$vname='" + vname.Replace("'", "''") + "'; " +
                 "$text=[IO.File]::ReadAllText($txt,[Text.Encoding]::UTF8); " +
-                "function W($o){while($o.Status -eq 'Started'){" +
-                "Start-Sleep -Milliseconds 10};$o.GetResults()}; " +
                 "$ok=$false; " +
                 "try{Add-Type -AssemblyName System.Runtime.WindowsRuntime;" +
+                // TWO registration requirements in Windows PowerShell 5.1:
+                // (a) the [void][Type, Windows.Foundation,...] lines or
+                //     New-Object/static access on WinRT types throws;
+                // (b) async ops MUST be awaited through the generic
+                //     WindowsRuntimeSystemExtensions.AsTask method - the
+                //     IAsyncOperation COM object exposes no GetResults()
+                //     to PowerShell. The old W() helper calling
+                //     $o.GetResults() always threw, the catch swallowed it
+                //     and everything silently fell back to the female
+                //     SAPI5 voice. That was the real "still female" bug.
+                "[void][Windows.Media.SpeechSynthesis.SpeechSynthesizer," +
+                "Windows.Foundation,ContentType=WindowsRuntime];" +
+                "[void][Windows.Storage.Streams.DataReader," +
+                "Windows.Foundation,ContentType=WindowsRuntime];" +
+                "$asTask=([System.WindowsRuntimeSystemExtensions].GetMethods()|" +
+                "Where-Object{$_.Name -eq 'AsTask' -and " +
+                "$_.GetParameters().Count -eq 1 -and " +
+                "$_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})[0];" +
+                "function W($o,$t){$task=$asTask.MakeGenericMethod($t).Invoke(" +
+                "$null,@($o));$task.Wait();$task.Result};" +
                 "$synth=New-Object Windows.Media.SpeechSynthesis.SpeechSynthesizer;" +
                 "$all=[Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices;" +
                 "$v=$all|Where-Object{$_.Language -like '" + iso +
@@ -342,12 +360,15 @@ namespace Project8.UI
                     .ToString(System.Globalization.CultureInfo.InvariantCulture) + ";" +
                 "$ssml='<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"'+$v.Language+'\">" +
                 "<break time=\"350ms\"/>'+[Security.SecurityElement]::Escape($text)+'</speak>';" +
-                "try{$st=W($synth.SynthesizeSsmlToStreamAsync($ssml))}catch{" +
-                "$st=W($synth.SynthesizeTextToStreamAsync($text))};" +
+                "try{$st=W($synth.SynthesizeSsmlToStreamAsync($ssml))" +
+                "([Windows.Media.SpeechSynthesis.SpeechSynthesisStream])}catch{" +
+                "$st=W($synth.SynthesizeTextToStreamAsync($text))" +
+                "([Windows.Media.SpeechSynthesis.SpeechSynthesisStream])};" +
                 "$reader=New-Object Windows.Storage.Streams.DataReader -ArgumentList $st.GetInputStreamAt(0);" +
-                "$null=W($reader.LoadAsync([uint32]$st.Size));" +
+                "$null=W($reader.LoadAsync([uint32]$st.Size))([uint32]);" +
                 "$bytes=New-Object byte[] $st.Size;$reader.ReadBytes($bytes);" +
-                "[IO.File]::WriteAllBytes($wav,$bytes);$ok=$true}}catch{$ok=$false} " +
+                "[IO.File]::WriteAllBytes($wav,$bytes);$ok=$true}" +
+                "}catch{[IO.File]::WriteAllText($vname,'WINRT-FAIL|'+$_.Exception.Message);$ok=$false} " +
                 "if(-not $ok){" +
                 "Add-Type -AssemblyName System.Speech;" +
                 "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;" +
@@ -356,7 +377,8 @@ namespace Project8.UI
                 "$m=$vs|Where-Object{$_.VoiceInfo.Gender.ToString() -eq 'Male'}|" +
                 "Select-Object -First 1;" +
                 "if(-not $m){$m=$vs|Select-Object -First 1};" +
-                "if($m){$s.SelectVoice($m.VoiceInfo.Name)};" +
+                "if($m){$s.SelectVoice($m.VoiceInfo.Name);" +
+                "[IO.File]::WriteAllText($vname,'SAPI5|'+$m.VoiceInfo.Name)};" +
                 "$s.Rate=" + rate + ";$s.Volume=" + volume + ";" +
                 "$s.SetOutputToWaveFile($wav);" +
                 // SAPI5 fallback (English on this PC): no male voice exists,

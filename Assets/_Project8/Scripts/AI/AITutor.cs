@@ -38,6 +38,19 @@ namespace Project8.AI
             _model = model; _systemPrompt = systemPrompt; _azureStyle = azureStyle;
         }
 
+        /// <summary>The LLM's "match the user's language" hint was not enough -
+        /// the remote answered English no matter which UI language was chosen.
+        /// Pin the reply language explicitly per request instead.</summary>
+        string SystemPromptForCurrentLanguage()
+        {
+            string lang = Project8.UI.ExperienceSettings.IsChinese
+                ? "Simplified Chinese (简体中文)"
+                : Project8.UI.ExperienceSettings.IsDutch
+                ? "Dutch (Nederlands)" : "English";
+            return _systemPrompt + " ALWAYS reply in " + lang +
+                   ", regardless of the question's language.";
+        }
+
         /// <summary>Posts the question; onAnswer gets the reply text, or null on failure.</summary>
         public void Ask(string question, System.Action<string> onAnswer)
             => _runner.StartCoroutine(Post(question, onAnswer));
@@ -49,7 +62,7 @@ namespace Project8.AI
                 model = _model,
                 messages = new[]
                 {
-                    new ChatMessage { role = "system", content = _systemPrompt },
+                    new ChatMessage { role = "system", content = SystemPromptForCurrentLanguage() },
                     new ChatMessage { role = "user", content = question },
                 }
             });

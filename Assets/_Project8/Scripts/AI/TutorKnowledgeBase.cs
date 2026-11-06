@@ -29,10 +29,33 @@ namespace Project8.AI
             "stations. Try asking about strain, stretch and squeeze, the wavefront ring, " +
             "why the motion is slowed down, or which values are exaggerated.";
 
+        [TextArea(2, 6)]
+        public string fallbackAnswerZh =
+            "好问题。在这个可视化里，简化的引力波从黑洞并合处向外扩散，" +
+            "传向爱因斯坦望远镜的三个测站。你可以问：应变（h = ΔL/L）、拉伸与挤压、" +
+            "波前圆环、为什么演示把波放慢了、或者哪些数值被夸大了。";
+
+        [TextArea(2, 6)]
+        public string fallbackAnswerNl =
+            "Goede vraag. In deze visualisatie plant een vereenvoudigde zwaartekrachtgolf " +
+            "zich voort vanuit een samensmeltend paar zwarte gaten naar de drie stations " +
+            "van de Einstein Telescope. Vraag bijvoorbeeld naar rek (h = dL/L), uitrekken " +
+            "en samendrukken, de golfrand, waarom de beweging vertraagd is, of welke " +
+            "waarden overdreven zijn.";
+
+        /// <summary>No-match reply in the selected UI language - the remote-failure
+        /// path used to drop to English no matter what the user picked.</summary>
+        string LocalizedFallback()
+        {
+            if (Project8.UI.ExperienceSettings.IsChinese) return fallbackAnswerZh;
+            if (Project8.UI.ExperienceSettings.IsDutch) return fallbackAnswerNl;
+            return fallbackAnswer;
+        }
+
         /// <summary>Returns the best-scoring answer for a free-text question.</summary>
         public string FindBest(string question)
         {
-            if (string.IsNullOrWhiteSpace(question)) return fallbackAnswer;
+            if (string.IsNullOrWhiteSpace(question)) return LocalizedFallback();
             string q = question.ToLowerInvariant();
             Entry best = null;
             int bestScore = 0;
@@ -44,7 +67,7 @@ namespace Project8.AI
                         score++;
                 if (score > bestScore) { bestScore = score; best = e; }
             }
-            return best != null ? best.answer : fallbackAnswer;
+            return best != null ? best.answer : LocalizedFallback();
         }
     }
 }
